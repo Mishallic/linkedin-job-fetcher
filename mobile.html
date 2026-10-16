@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Jobs">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Jobs</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f2f2f7;
+    --card: #ffffff;
+    --text: #1c1c1e;
+    --muted: #6e6e73;
+    --line: #e3e3e8;
+    --accent: #2563eb;
+    --accent-soft: #e8efff;
+    --on-accent: #ffffff;
+    --new: #16a34a;
+    --danger: #dc2626;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --card: #1c1c1e;
+      --text: #f2f2f7;
+      --muted: #98989f;
+      --line: #2c2c2e;
+      --accent: #5b93ff;
+      --accent-soft: #1b2741;
+      --new: #34c759;
+      --danger: #ff453a;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    padding-bottom: calc(28px + env(safe-area-inset-bottom));
+  }
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: calc(12px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 10px max(16px, env(safe-area-inset-left));
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+  }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 640px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  h2 { margin: 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .meta { margin: 4px auto 0; max-width: 640px; font-size: 13px; color: var(--muted); }
+  .meta.error { color: var(--danger); }
+  main { max-width: 640px; margin: 0 auto; padding: 0 max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); }
+  section { margin-top: 22px; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 4px 8px; min-height: 30px; }
+  .card { background: var(--card); border-radius: 12px; overflow: hidden; }
+  button, input, select { font: inherit; color: inherit; }
+  .pill {
+    border: 0; border-radius: 999px; padding: 8px 14px;
+    background: var(--accent-soft); color: var(--accent); font-size: 15px; font-weight: 600;
+  }
+  .pill:active, .primary:active, .remove:active { opacity: 0.6; }
+  .search { display: flex; align-items: center; gap: 10px; padding: 12px 8px 12px 14px; }
+  .search + .search { border-top: 1px solid var(--line); }
+  .info { flex: 1; min-width: 0; }
+  .name { font-weight: 600; overflow-wrap: anywhere; }
+  .sub { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .count {
+    min-width: 28px; padding: 2px 8px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 600; text-align: center;
+  }
+  .remove { border: 0; background: none; color: var(--muted); font-size: 24px; line-height: 1; padding: 6px 10px; }
+  form { margin-top: 10px; padding: 2px 14px 14px; }
+  input {
+    width: 100%; border: 0; border-bottom: 1px solid var(--line); border-radius: 0;
+    background: transparent; padding: 12px 0; font-size: 16px; outline: none;
+  }
+  input:focus { border-bottom-color: var(--accent); }
+  .primary {
+    width: 100%; margin-top: 14px; border: 0; border-radius: 10px; padding: 12px;
+    background: var(--accent); color: var(--on-accent); font-weight: 600;
+  }
+  .hint { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+  select {
+    max-width: 62%; border: 0; border-radius: 8px; padding: 6px 10px;
+    background: var(--accent-soft); color: var(--accent); font-size: 14px;
+  }
+  .job { display: block; padding: 12px 14px; color: inherit; text-decoration: none; }
+  .job + .job { border-top: 1px solid var(--line); }
+  .job:active { background: var(--line); }
+  .title { font-weight: 600; overflow-wrap: anywhere; }
+  .dot { display: inline-block; width: 8px; height: 8px; margin: 0 6px 2px 0; border-radius: 50%; background: var(--new); }
+  .company { margin-top: 2px; overflow-wrap: anywhere; }
+  .foot { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .tag { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .foot span:last-child { flex-shrink: 0; }
+  .empty { padding: 18px 14px; color: var(--muted); text-align: center; font-size: 14px; }
+  #toast {
+    position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    max-width: calc(100% - 32px); padding: 10px 16px; border-radius: 12px;
+    background: var(--text); color: var(--bg); font-size: 14px;
+    opacity: 0; transition: opacity 0.2s; pointer-events: none;
+  }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1>Jobs</h1>
+    <button id="check" class="pill" type="button">Check now</button>
+  </div>
+  <p id="meta" class="meta">Connecting to your PC…</p>
+</header>
+<main>
+  <section>
+    <div class="section-head"><h2>Searches</h2></div>
+    <div id="searches" class="card"></div>
+    <form id="add" class="card" autocomplete="off">
+      <input id="kw" placeholder="Position, e.g. Software engineer" enterkeyhint="next" autocapitalize="off">
+      <input id="loc" placeholder="Location, e.g. Amman, Jordan" enterkeyhint="go">
+      <button class="primary" type="submit">Add search</button>
+      <p class="hint">"City, Country" works best for location.</p>
+    </form>
+  </section>
+  <section>
+    <div class="section-head">
+      <h2>Jobs</h2>
+      <select id="filter" aria-label="Show jobs from"><option value="">All searches</option></select>
+    </div>
+    <div id="jobs" class="card"></div>
+  </section>
+</main>
+<div id="toast" role="status"></div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const query = new URLSearchParams(window.location.search);
+  let key = query.get("key") || "";
+  try {
+    if (key) localStorage.setItem("key", key);
+    else key = localStorage.getItem("key") || "";
+  } catch (e) { /* storage unavailable: the key in the link still works */ }
+
+  let state = null;
+  let filterLabels = "";
+  let toastTimer;
+
+  function esc(value) {
+    return String(value ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+  }
+
+  function toast(message) {
+    const el = $("toast");
+    el.textContent = message;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), 2600);
+  }
+
+  function showMeta(text, isError) {
+    $("meta").textContent = text;
+    $("meta").classList.toggle("error", Boolean(isError));
+  }
+
+  async function api(path, body) {
+    const res = await fetch(path, {
+      method: body ? "POST" : "GET",
+      headers: { "X-Key": key, "Content-Type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+    return data;
+  }
+
+  function render() {
+    if (!state) return;
+    const { searches, jobs, next_check, notify } = state;
+    showMeta([next_check, notify].filter(Boolean).join(" · "));
+
+    $("searches").innerHTML = searches.length ? searches.map((s) => `
+      <div class="search">
+        <div class="info">
+          <div class="name">${esc(s.keywords)}</div>
+          <div class="sub">${esc(s.location)} · ${esc(s.status)}</div>
+        </div>
+        <span class="count" aria-label="New jobs found">${esc(s.found)}</span>
+        <button class="remove" type="button" data-label="${esc(s.label)}" aria-label="Remove ${esc(s.label)}">×</button>
+      </div>`).join("") : `<div class="empty">No searches yet. Add one below.</div>`;
+
+    // Only rebuild the filter when the searches change, so an open picker isn't reset.
+    const filter = $("filter");
+    const labels = searches.map((s) => s.label);
+    if (labels.join("\n") !== filterLabels) {
+      const chosen = filter.value;
+      filter.innerHTML = `<option value="">All searches</option>` +
+        labels.map((l) => `<option value="${esc(l)}">${esc(l)}</option>`).join("");
+      filter.value = labels.includes(chosen) ? chosen : "";
+      filterLabels = labels.join("\n");
+    }
+
+    const shown = jobs.filter((j) => !filter.value || j.search === filter.value);
+    $("jobs").innerHTML = shown.length ? shown.map((j) => `
+      <a class="job" href="${esc(j.url)}" target="_blank" rel="noopener">
+        <div class="title">${j.new ? '<span class="dot" aria-label="New"></span>' : ""}${esc(j.title)}</div>
+        <div class="company">${esc(j.company)}</div>
+        <div class="sub">${esc(j.location)}</div>
+        <div class="foot"><span class="tag">${esc(j.search)}</span><span>Found ${esc(j.found.slice(5))}</span></div>
+      </a>`).join("") : `<div class="empty">No jobs yet. New ones show up here as they're found.</div>`;
+  }
+
+  async function refresh() {
+    if (!key) {
+      showMeta("Open this page by scanning the QR code in the desktop app (Phone… button).", true);
+      return;
+    }
+    try {
+      state = await api("/api/state");
+      render();
+    } catch (err) {
+      showMeta(err instanceof TypeError
+        ? "Can't reach your PC. Make sure the app is open there and you're on the same Wi-Fi."
+        : err.message, true);
+    }
+  }
+
+  $("check").addEventListener("click", async () => {
+    try {
+      await api("/api/check", {});
+      toast("Checking all searches…");
+      setTimeout(refresh, 1500);
+      setTimeout(refresh, 10000);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  $("kw").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); $("loc").focus(); }
+  });
+
+  $("add").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const keywords = $("kw").value.trim();
+    if (!keywords) { $("kw").focus(); return; }
+    try {
+      await api("/api/searches", { keywords, location: $("loc").value.trim() });
+      $("kw").value = "";
+      $("loc").value = "";
+      document.activeElement.blur();
+      toast("Search added. Checking it now…");
+      refresh();
+      setTimeout(refresh, 10000);
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  $("searches").addEventListener("click", async (e) => {
+    const button = e.target.closest(".remove");
+    if (!button || !confirm(`Stop watching "${button.dataset.label}"?`)) return;
+    try {
+      await api("/api/searches/delete", { label: button.dataset.label });
+      refresh();
+    } catch (err) {
+      toast(err.message);
+    }
+  });
+
+  $("filter").addEventListener("change", render);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) refresh(); });
+  setInterval(() => { if (!document.hidden) refresh(); }, 30000);
+  refresh();
+</script>
+</body>
+</html>

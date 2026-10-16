@@ -1,0 +1,181 @@
+package com.jobwatch.app
+
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.view.View
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isToggleable
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextInput
+import androidx.lifecycle.Lifecycle
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowDialog
+import java.io.File
+
+/** Runs the real app screens on the PC (Robolectric) and saves screenshots to build/screenshots. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [35], qualifiers = "w400dp-h880dp-xxhdpi")
+class UiTest {
+    @get:Rule
+    val compose = createAndroidComposeRule<MainActivity>()
+
+    companion object {
+        val requested: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
+
+        // A fake LinkedIn that serves the saved results page, so UI tests send no real requests.
+        // Set before the activity starts, since opening the app runs a check.
+        init {
+            val sample = UiTest::class.java.getResource("/sample_page.html")!!.readText()
+            Http.fake = { url -> requested += url; 200 to (if ("start=0" in url) sample else "") }
+            Checker.pauseBetweenSearchesMs = 0L..0L
+        }
+    }
+
+    // Compose's captureToImage() waits for a frame that never comes under Robolectric,
+    // so draw the window (or a dialog's window) into a bitmap directly.
+    private fun screenshot(name: String, view: View = compose.activity.window.decorView) {
+        compose.waitForIdle()
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(bitmap))
+        val dir = File("build/screenshots").apply { mkdirs() }
+        File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    @Test
+    fun mainScreenStartsWithYourSearchesAndAddsOne() {
+        compose.onNodeWithText("Job Watch").assertIsDisplayed()
+        compose.onNodeWithText("Amman, Jordan", substring = true).assertIsDisplayed()
+        screenshot("1-main")
+
+        val list = compose.onNode(hasScrollToIndexAction()) // the main list (the filter chips scroll too)
+        list.performScrollToNode(hasText("Add search"))
+        compose.onNode(hasSetTextAction() and hasText("Position")).performTextInput("python developer")
+        compose.onNode(hasSetTextAction() and hasText("Location")).performTextInput("Dubai")
+        screenshot("2-adding")
+        compose.onNodeWithText("Add search").performClick()
+        compose.waitForIdle()
+
+        val saved = Store.load(compose.activity).searches.map { it.label }
+        assertTrue("search saved: $saved", "python developer @ Dubai" in saved)
+        list.performScrollToNode(hasText("python developer"))
+        compose.onNodeWithText("python developer").assertIsDisplayed()
+
+        // The new search is checked right away (real LinkedIn request); wait for its result.
+        compose.waitUntil(30_000) {
+            Store.load(compose.activity).searches.first { it.keywords == "python developer" }.status != "Not checked yet"
+        }
+        val status = Store.load(compose.activity).searches.first { it.keywords == "python developer" }.status
+        println("python developer @ Dubai -> $status")
+        assertTrue(status, status.startsWith("Checked") || status.startsWith("Error"))
+        list.performScrollToNode(hasText("JOBS", substring = true))
+        screenshot("2b-after-check")
+    }
+
+    @Test
+    fun alertsScreenOpensAndShowsEmailFields() {
+        compose.onNodeWithContentDescription("Email and WhatsApp alerts").performClick()
+        compose.onNodeWithText("Alerts").assertIsDisplayed()
+        compose.onNodeWithText("Email me each round of new jobs").assertIsDisplayed()
+        compose.onAllNodes(isToggleable())[0].performClick() // the email switch
+        compose.onNodeWithText("Send to").assertIsDisplayed()
+        compose.onNodeWithText("Send test").assertIsDisplayed()
+        screenshot("3-alerts")
+    }
+
+    @Test
+    fun newDotStaysUntilThatJobIsOpened() {
+        val activity = compose.activity
+        // A check (it waits for any still running) finds the fake LinkedIn page's 10 jobs, all new.
+        Checker.run(activity, force = true)
+        compose.waitForIdle()
+        assertEquals(10, Store.load(activity).jobs.size)
+        assertTrue(Store.load(activity).jobs.all { it.isNew })
+
+        // Leaving the app (as when a job opens in LinkedIn) and coming back keeps every dot.
+        compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+        compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        compose.waitForIdle()
+        assertTrue(Store.load(activity).jobs.all { it.isNew })
+
+        // Opening one job clears only its dot, and opens it.
+        val jobs = Store.load(activity).jobs
+        val job = jobs.first { j -> jobs.count { it.title == j.title } == 1 }
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasText(job.title))
+        compose.onNode(hasClickAction() and hasText(job.title)).performClick()
+        compose.waitForIdle()
+        val after = Store.load(activity).jobs
+        assertFalse(after.first { it.id == job.id }.isNew)
+        assertEquals(9, after.count { it.isNew })
+        val opened = generateSequence { shadowOf(activity).nextStartedActivity }.mapNotNull { it.dataString }.toList()
+        assertTrue(opened.toString(), job.url in opened)
+        screenshot("6-dots")
+    }
+
+    @Test
+    fun aboutShowsTheVersion() {
+        compose.onNodeWithContentDescription("About Job Watch").performClick()
+        compose.onNodeWithText("Version 1.6 (build 7)").assertIsDisplayed()
+        compose.onNodeWithText("jobs found so far", substring = true).assertIsDisplayed()
+        screenshot("7-about", ShadowDialog.getLatestDialog().window!!.decorView)
+    }
+
+    @Test
+    fun backgroundChecksCanBeStopped() {
+        compose.onNode(isToggleable() and hasText("Check every 10 minutes", substring = true)).performClick()
+        compose.onNodeWithText("Off: nothing runs in the background", substring = true).assertIsDisplayed()
+        assertFalse(Store.load(compose.activity).checksOn)
+        assertEquals("alarm cancelled", 0L, Scheduler.nextCheckAt(compose.activity))
+        compose.waitUntil(5_000) {
+            compose.onAllNodesWithText("Background checks stopped", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        screenshot("8-stopped")
+    }
+
+    @Test
+    fun slowDownIsExplainedAndRefreshStillWorks() {
+        val activity = compose.activity
+        val normal = Http.fake
+
+        // LinkedIn refuses: the card says so, and when it will try again.
+        Http.fake = { url -> requested += url; 429 to "" }
+        compose.onNodeWithContentDescription("Check now").performClick()
+        compose.waitUntil(15_000) { Store.load(activity).limited }
+        compose.onNode(isToggleable() and hasText("LinkedIn asked to slow down", substring = true)).assertIsDisplayed()
+        screenshot("5-slowed-down")
+
+        // No waiting period: refresh goes straight to LinkedIn, and once it answers, all is normal.
+        Http.fake = normal
+        // While a check runs, the refresh button shows a spinner; wait for it to come back.
+        compose.waitUntil(15_000) { compose.onAllNodesWithContentDescription("Check now").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithContentDescription("Check now").performClick()
+        compose.waitUntil(15_000) { !Store.load(activity).limited }
+        compose.onNodeWithText("Last check", substring = true).assertIsDisplayed()
+    }
+
+    @Test
+    @Config(qualifiers = "+night")
+    fun darkMode() {
+        compose.onNodeWithText("Job Watch").assertIsDisplayed()
+        screenshot("4-main-dark")
+    }
+}

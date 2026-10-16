@@ -1,0 +1,174 @@
+package com.jobwatch.app
+
+import java.net.HttpURLConnection
+import java.net.URL
+import java.net.URLEncoder
+import java.text.DateFormat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+data class Job(
+    val id: String,
+    val title: String,
+    val company: String,
+    val location: String,
+    val posted: String,
+    val url: String,
+    val search: String = "",
+    val foundAt: Long = 0L,
+    val isNew: Boolean = false,
+)
+
+data class Search(
+    val keywords: String,
+    val location: String,
+    // Jobs are covered up to this moment. Starting it at "now" means that if the first
+    // check fails, the next one still looks back to when the search was added.
+    val lastCheck: Long = System.currentTimeMillis(),
+    val found: Int = 0,
+    val status: String = "Not checked yet",
+) {
+    /** Where the search looks, as shown to the user. */
+    val place: String get() = location.ifBlank { "Anywhere" }
+
+    val label: String get() = if (location.isBlank()) keywords else "$keywords @ $location"
+}
+
+/** LinkedIn answered 429 (or its 999 bot block): it wants fewer requests from this connection. */
+class SlowDownException : IllegalStateException("LinkedIn asked to slow down")
+
+/** LinkedIn's public (logged-out) job search, the same one linkedin.com/jobs uses. */
+object LinkedIn {
+    private const val SEARCH_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+    private const val JOB_URL = "https://www.linkedin.com/jobs/view/"
+    private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+
+    // Android can delay background work, so each check looks back to the previous one
+    // (plus an overlap) instead of a fixed 10 minutes. Jobs never fall into a gap.
+    const val MIN_WINDOW_MINUTES = 15L
+    const val OVERLAP_MINUTES = 5L
+    const val MAX_WINDOW_HOURS = 24L
+    private const val MAX_PAGES = 40 // safety stop only
+    private const val PAGE_SIZE = 10 // LinkedIn returns 10 jobs per page; a shorter page is the last one
+
+    private val CARD_START = "data-entity-urn=\"urn:li:jobPosting:"
+    private val ID = Regex("^\\d+")
+    private val TITLE = Regex("class=\"base-search-card__title\"[^>]*>([\\s\\S]*?)</h3>")
+    private val COMPANY = Regex("class=\"base-search-card__subtitle\"[^>]*>([\\s\\S]*?)</h4>")
+    private val LOCATION = Regex("class=\"job-search-card__location\"[^>]*>([\\s\\S]*?)</span>")
+    private val POSTED = Regex("<time[^>]*datetime=\"([^\"]*)\"")
+
+    fun parse(html: String): List<Job> = html.split(CARD_START).drop(1).mapNotNull { card ->
+        val id = ID.find(card)?.value ?: return@mapNotNull null
+        Job(
+            id = id,
+            title = grab(card, TITLE),
+            company = grab(card, COMPANY),
+            location = grab(card, LOCATION),
+            posted = POSTED.find(card)?.groupValues?.get(1).orEmpty(),
+            url = "$JOB_URL$id/",
+        )
+    }
+
+    /** Seconds to look back: since the last successful check plus the overlap, within bounds. */
+    fun windowSeconds(lastCheck: Long, now: Long): Long {
+        val sinceLast = (now - lastCheck).coerceAtLeast(0L) / 1000 + OVERLAP_MINUTES * 60
+        return sinceLast.coerceIn(MIN_WINDOW_MINUTES * 60, MAX_WINDOW_HOURS * 3600)
+    }
+
+    /** Every job in the search's window, across all pages, whose id isn't in [seen]. */
+    fun fetchNewJobs(search: Search, seen: Set<String>, now: Long): List<Job> {
+        val seconds = windowSeconds(search.lastCheck, now)
+        val read = HashSet<String>()
+        val fresh = mutableListOf<Job>()
+        var start = 0
+        for (page in 0 until MAX_PAGES) {
+            if (page > 0) Thread.sleep(1200) // be polite between pages
+            val jobs = parse(fetchPage(search, seconds, start))
+            val unread = jobs.filter { it.id !in read }
+            if (unread.isEmpty()) break // past the last page (or LinkedIn repeated one)
+            unread.forEach { read += it.id }
+            fresh += unread.filter { it.id !in seen }
+            if (jobs.size < PAGE_SIZE) break // last page: no need to ask LinkedIn for an empty one
+            start += jobs.size
+        }
+        return fresh
+    }
+
+    /** The search URL for one results page. */
+    fun pageUrl(search: Search, seconds: Long, start: Int): String {
+        val params = listOf(
+            "keywords" to search.keywords,
+            "location" to search.location,
+            "f_TPR" to "r$seconds",
+            "sortBy" to "DD", // newest first
+            "start" to start.toString(),
+        )
+        return "$SEARCH_URL?" + params.joinToString("&") { (key, value) -> "$key=${URLEncoder.encode(value, "UTF-8")}" }
+    }
+
+    private fun fetchPage(search: Search, seconds: Long, start: Int): String {
+        val (status, body) = Http.get(pageUrl(search, seconds, start), mapOf("User-Agent" to USER_AGENT, "Accept-Language" to "en-US,en;q=0.9"))
+        return when {
+            status == 200 -> body
+            status == 400 && start > 0 -> "" // LinkedIn's answer past the last page
+            status == 429 || status == 999 -> throw SlowDownException()
+            else -> throw IllegalStateException("LinkedIn returned HTTP $status")
+        }
+    }
+}
+
+object Http {
+    /** Tests swap in canned answers here instead of calling LinkedIn or CallMeBot. */
+    @Volatile
+    var fake: ((String) -> Pair<Int, String>)? = null
+
+    fun get(url: String, headers: Map<String, String> = emptyMap()): Pair<Int, String> {
+        fake?.let { return it(url) }
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 15_000
+            headers.forEach { (key, value) -> connection.setRequestProperty(key, value) }
+            val status = connection.responseCode
+            val stream = if (status < 400) connection.inputStream else connection.errorStream
+            return status to (stream?.bufferedReader()?.use { it.readText() } ?: "")
+        } finally {
+            connection.disconnect()
+        }
+    }
+}
+
+private val ENTITIES = mapOf("amp" to "&", "lt" to "<", "gt" to ">", "quot" to "\"", "apos" to "'", "nbsp" to " ")
+private val ENTITY = Regex("&(#[xX][0-9a-fA-F]+|#\\d+|[a-zA-Z]+);")
+private val TAG = Regex("<[^>]+>")
+private val SPACES = Regex("\\s+")
+
+fun decodeEntities(text: String): String = ENTITY.replace(text) { match ->
+    val code = match.groupValues[1]
+    val number = when {
+        code.startsWith("#x") || code.startsWith("#X") -> code.substring(2).toIntOrNull(16)
+        code.startsWith("#") -> code.substring(1).toIntOrNull()
+        else -> null
+    }
+    when {
+        number != null -> String(Character.toChars(number))
+        code.startsWith("#") -> match.value
+        else -> ENTITIES[code.lowercase()] ?: match.value
+    }
+}
+
+fun cleanText(html: String): String = decodeEntities(TAG.replace(html, " ")).replace(SPACES, " ").trim()
+
+private fun grab(text: String, pattern: Regex): String = pattern.find(text)?.let { cleanText(it.groupValues[1]) }.orEmpty()
+
+fun timeText(ms: Long): String {
+    if (ms <= 0) return "never"
+    val date = Date(ms)
+    val time = DateFormat.getTimeInstance(DateFormat.SHORT).format(date)
+    val day = SimpleDateFormat("yyyyMMdd", Locale.US)
+    return if (day.format(date) == day.format(Date())) time
+    else "${SimpleDateFormat("MMM d", Locale.getDefault()).format(date)}, $time"
+}
