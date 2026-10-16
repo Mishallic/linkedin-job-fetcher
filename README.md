@@ -8,7 +8,7 @@ There are three versions of it:
 
 | Version | Where it runs | How it tells you |
 | --- | --- | --- |
-| **Job Watch** ([`android/`](android)) | Android phone: LinkedIn every 10 minutes, remote job boards every 6 hours | Phone notification, plus optional email and WhatsApp |
+| **Job Watch** ([`android/`](android)) | Android phone: LinkedIn and remote job boards every 10 minutes | Phone notification, plus optional email and WhatsApp |
 | **Desktop app** (`jobs_ui.py`) | Windows PC, while the window is open | Email and WhatsApp; a phone page over Wi-Fi |
 | **iPhone script** ([`iphone/Jobs.js`](iphone/Jobs.js)) | iPhone, in the free Scriptable app, when iOS allows | iPhone notification, plus optional WhatsApp |
 
@@ -24,16 +24,26 @@ On first launch, allow notifications and tap **Allow** on the "Finish setting up
 Android doesn't pause the checks. The **Check every 10 minutes** switch turns background
 checks off and on.
 
-**New and read:** a filled dot marks a new job, an empty circle a read one. Tap the dot to
-switch it, or open the job to mark it read. Long-press a job to select several, then
-**Mark as read**, **Mark as new** or **Select all** from the bar at the bottom.
+**New, read and deleted:** a filled dot marks a new job, an empty circle a read one. Tap the
+dot to switch it, or open the job to mark it read. Long-press a job to select several, then
+**Mark as read**, **Mark as new** or **Select all** from the bar at the bottom, or the trash
+button to delete them (with **Undo** for a few seconds). Deleted jobs don't come back.
 
 **Remote job boards:** besides LinkedIn, Job Watch reads the official feeds of We Work
-Remotely, Himalayas, Jobicy, Remote OK and Remotive. It keeps jobs whose title contains one
+Remotely, Himalayas, Remote OK, Jobicy and Remotive. It keeps jobs whose title contains one
 of your positions and that are open worldwide or to the places in your searches (or to
-EMEA, the Middle East or the GCC). These boards ask apps to link to the original listing,
-name them as the source, and call sparingly (Remotive: at most 4 times a day), so they're
-checked every 6 hours, and every job shows which board it came from.
+EMEA, the Middle East or the GCC). These boards ask apps to link to the original listing
+and name them as the source, so every job shows which board it came from. The boards are
+read in the same 10-minute rounds as LinkedIn, each only as often as its terms allow:
+
+| Board | Read |
+| --- | --- |
+| We Work Remotely, Himalayas, Remote OK | every round (no limit) |
+| Jobicy | hourly (its limit) |
+| Remotive | every 6 hours (its limit: 4 times a day) |
+
+On mobile data every board is read at most hourly: a round downloads about 400 KB, which
+every 10 minutes would come to about 60 MB a day.
 
 **Build** (JDK 17 and the Android SDK with platform 35):
 
