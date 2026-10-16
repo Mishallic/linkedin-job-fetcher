@@ -114,6 +114,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         Alerts.createChannel(this)
+        RemoteBoards.cancelOldSchedule(this)
         setContent { JobWatchTheme { App() } }
     }
 
@@ -122,8 +123,7 @@ class MainActivity : ComponentActivity() {
         resumes.value = resumes.value + 1 // re-read permissions the user may have just changed
         // These do nothing while background checks are turned off.
         Scheduler.scheduleNext(this)
-        RemoteBoards.schedule(this)
-        thread { Checker.run(applicationContext) } // catch up if the last check was a while ago
+        thread { Checker.round(applicationContext) } // catch up if the last check was a while ago
     }
 
     companion object {
@@ -172,12 +172,15 @@ fun App() {
         }
     }
 
-    /** A check the user asked for. */
+    /** A check the user asked for: one new search, or (null) a full round. */
     fun runCheck(labels: Set<String>?) {
         if (busy) return
         busy = true
         scope.launch {
-            val jobs = withContext(Dispatchers.IO) { Checker.run(context.applicationContext, labels, force = true) }
+            val jobs = withContext(Dispatchers.IO) {
+                if (labels == null) Checker.round(context.applicationContext, force = true)
+                else Checker.run(context.applicationContext, labels, force = true)
+            }
             busy = false
             snackbar.showSnackbar(when {
                 Store.load(context).limited -> "LinkedIn asked to slow down. Try again in a few minutes."
@@ -188,8 +191,7 @@ fun App() {
     }
 
     val setChecks: (Boolean) -> Unit = { on ->
-        Store.update(context) { it.copy(checksOn = on) }
-        RemoteBoards.schedule(context) // the remote boards follow the same switch
+        Store.update(context) { it.copy(checksOn = on) } // the remote boards follow the same switch
         if (on) {
             Scheduler.scheduleNext(context)
             runCheck(null)
@@ -248,7 +250,7 @@ fun AboutDialog(data: AppData, onClose: () -> Unit) {
                     Text("Installed ${timeText(app.lastUpdateTime)}", style = MaterialTheme.typography.bodySmall, color = muted)
                 }
                 Text("Checks your LinkedIn job searches every ${Scheduler.INTERVAL_MINUTES} minutes, and remote job " +
-                    "boards every ${RemoteBoards.INTERVAL_HOURS} hours, and tells you about new and reposted jobs. " +
+                    "boards as often as each one allows, and tells you about new and reposted jobs. " +
                     "It runs entirely on this phone.",
                     style = MaterialTheme.typography.bodyMedium)
                 Text("${data.searches.size} searches · ${data.seen.size} jobs found so far",
@@ -297,7 +299,7 @@ fun MainList(
             item(key = "remote") {
                 RemoteBoardsCard(data, onChange = { on ->
                     Store.update(context) { it.copy(remoteOn = on) }
-                    RemoteBoards.schedule(context)
+                    if (on) thread { RemoteBoards.check(context.applicationContext) } // don't wait for the next round
                 })
             }
 
@@ -409,7 +411,7 @@ fun RemoteBoardsCard(data: AppData, onChange: (Boolean) -> Unit) {
         !data.checksOn -> "Paused while background checks are off"
         positions.isEmpty() -> "Add a search above to choose which jobs to look for"
         data.remoteLastCheck == 0L -> "First check is on its way"
-        else -> "${data.remoteStatus} · next about ${timeText(data.remoteLastCheck + RemoteBoards.INTERVAL_HOURS * 3_600_000)}"
+        else -> data.remoteStatus
     }
     Card(Modifier.fillMaxWidth()) {
         Row(
@@ -421,8 +423,8 @@ fun RemoteBoardsCard(data: AppData, onChange: (Boolean) -> Unit) {
             Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(RemoteBoards.LABEL, style = MaterialTheme.typography.titleMedium)
                 Text("Remote ${positions.joinToString(" and ").ifBlank { "jobs" }} jobs open worldwide or to your region, " +
-                    "from ${RemoteBoards.BOARD_NAMES}. Checked every ${RemoteBoards.INTERVAL_HOURS} hours, " +
-                    "as often as these boards allow.",
+                    "from ${RemoteBoards.boardNames}. Checked every ${Scheduler.INTERVAL_MINUTES} minutes on Wi-Fi and " +
+                    "hourly on mobile data; Jobicy allows one check an hour and Remotive four a day.",
                     style = MaterialTheme.typography.bodySmall, color = muted)
                 Text(status, style = MaterialTheme.typography.bodySmall)
             }

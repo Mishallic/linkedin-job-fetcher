@@ -15,9 +15,10 @@ data class AppData(
     val lastRun: Long = 0L,
     val limited: Boolean = false, // LinkedIn said "slow down" on the last check; the next check tries again
     val checksOn: Boolean = true, // false: nothing runs in the background until the user turns it back on
-    val remoteOn: Boolean = true, // also check the remote job boards (every few hours)
+    val remoteOn: Boolean = true, // also check the remote job boards
     val remoteLastCheck: Long = 0L,
     val remoteStatus: String = "",
+    val boardChecks: Map<String, Long> = emptyMap(), // board name -> when it was last read
 )
 
 /**
@@ -97,11 +98,13 @@ object Store {
         .put("remoteOn", data.remoteOn)
         .put("remoteLastCheck", data.remoteLastCheck)
         .put("remoteStatus", data.remoteStatus)
+        .put("boardChecks", JSONObject(data.boardChecks))
 
     private fun fromJson(json: JSONObject): AppData {
         val searches = json.optJSONArray("searches") ?: JSONArray()
         val seen = json.optJSONArray("seen") ?: JSONArray()
         val jobs = json.optJSONArray("jobs") ?: JSONArray()
+        val boardChecks = json.optJSONObject("boardChecks") ?: JSONObject()
         return AppData(
             searches = List(searches.length()) { i ->
                 val o = searches.getJSONObject(i)
@@ -121,6 +124,7 @@ object Store {
             remoteOn = json.optBoolean("remoteOn", true),
             remoteLastCheck = json.optLong("remoteLastCheck"),
             remoteStatus = json.optString("remoteStatus"),
+            boardChecks = boardChecks.keys().asSequence().associateWith { boardChecks.optLong(it) },
         )
     }
 }

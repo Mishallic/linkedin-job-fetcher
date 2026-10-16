@@ -2,6 +2,7 @@ package com.jobwatch.app
 
 import android.content.Context
 import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.thread
 
 object Checker {
     private const val MIN_MINUTES_BETWEEN_CHECKS = 2L
@@ -14,7 +15,22 @@ object Checker {
     var pauseBetweenSearchesMs: LongRange = 2_000L..4_000L
 
     /**
-     * Check the searches named in [labels] (null = all), save what's new and send alerts.
+     * A full round: all LinkedIn searches and the remote boards that are due, side by side, then
+     * one alert for everything new. Returns the new jobs, or null when the LinkedIn check was
+     * skipped (see [run]) and the boards found nothing.
+     */
+    fun round(context: Context, force: Boolean = false): List<Job>? {
+        var fromBoards = emptyList<Job>()
+        val boards = thread { fromBoards = runCatching { RemoteBoards.check(context, force, alert = false) }.getOrDefault(emptyList()) }
+        val fromLinkedIn = run(context, force = force, alert = false)
+        boards.join()
+        val all = fromLinkedIn.orEmpty() + fromBoards
+        if (all.isNotEmpty()) Alerts.deliver(context, all)
+        return if (fromLinkedIn == null && fromBoards.isEmpty()) null else all
+    }
+
+    /**
+     * Check the searches named in [labels] (null = all), save what's new and, with [alert], send alerts.
      * Returns the new jobs, or null when a background check ([force] false) is skipped:
      * checks are turned off, a check is running, or one ran moments ago. Checks the user
      * asked for wait for a running check to finish and then run.
@@ -23,7 +39,7 @@ object Checker {
      * search) and the next regular check tries again. Nothing is lost meanwhile: each search's
      * next check looks back to its last successful one.
      */
-    fun run(context: Context, labels: Set<String>? = null, force: Boolean = false): List<Job>? {
+    fun run(context: Context, labels: Set<String>? = null, force: Boolean = false, alert: Boolean = true): List<Job>? {
         if (force) lock.lock() else if (!lock.tryLock()) return null
         try {
             val now = System.currentTimeMillis()
@@ -72,7 +88,7 @@ object Checker {
                     },
                 )
             }
-            if (batch.isNotEmpty()) Alerts.deliver(context, batch)
+            if (alert && batch.isNotEmpty()) Alerts.deliver(context, batch)
             return batch
         } finally {
             lock.unlock()

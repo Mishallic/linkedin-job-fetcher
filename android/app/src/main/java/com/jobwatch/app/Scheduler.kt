@@ -10,7 +10,8 @@ import android.os.PowerManager
 import kotlin.concurrent.thread
 
 /**
- * Wakes the app every 10 minutes with an alarm. Alarms (unlike scheduled jobs) still
+ * Wakes the app every 10 minutes with an alarm, for a round of LinkedIn and the remote job
+ * boards ([Checker.round]). Alarms (unlike scheduled jobs) still
  * fire when the phone is idle, and an app exempt from battery optimization may use the
  * network then, so checks keep their rhythm while the phone sits in a pocket.
  *
@@ -64,7 +65,7 @@ class CheckReceiver : BroadcastReceiver() {
         val pending = goAsync()
         thread {
             try {
-                Checker.run(app)
+                Checker.round(app)
             } finally {
                 pending.finish()
             }
@@ -75,6 +76,7 @@ class CheckReceiver : BroadcastReceiver() {
 /** Alarms are cleared when the phone restarts or the app is updated; start the chain again if checks are on. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        RemoteBoards.cancelOldSchedule(context.applicationContext) // the boards now ride on the alarm
         Scheduler.scheduleNext(context.applicationContext, 60_000)
     }
 }

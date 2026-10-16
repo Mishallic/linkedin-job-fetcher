@@ -5,8 +5,12 @@ import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import androidx.work.Worker
+import androidx.work.WorkerParameters
 import androidx.work.testing.WorkManagerTestInitHelper
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -17,6 +21,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import java.net.URI
+import java.util.Collections
+import java.util.concurrent.TimeUnit
 
 /** Turning background checks off must stop the app from running at all. */
 @RunWith(AndroidJUnit4::class)
@@ -24,11 +31,12 @@ import org.robolectric.annotation.Config
 class SchedulerTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val alarms get() = shadowOf(context.getSystemService(AlarmManager::class.java))
-    private val requests = mutableListOf<String>()
+    private val requests: MutableList<String> = Collections.synchronizedList(mutableListOf()) // a round reads side by side
 
     @After
     fun tearDown() {
         Http.fake = null
+        Checker.pauseBetweenSearchesMs = 2_000L..4_000L
     }
 
     @Test
@@ -66,24 +74,41 @@ class SchedulerTest {
     }
 
     @Test
-    fun remoteBoardsFollowBothSwitches() {
+    fun eachRoundReadsTheRemoteBoardsUnlessEitherSwitchIsOff() {
+        Http.fake = { url -> requests += url; 200 to "" }
+        Checker.pauseBetweenSearchesMs = 0L..0L
+        fun boardRequests() = requests.count { "linkedin.com" !in it }
+
+        Store.update(context) { it.copy(checksOn = false) }
+        assertNull(Checker.round(context))
+        assertEquals("background checks off: the boards aren't read either", 0, boardRequests())
+
+        Store.update(context) { it.copy(checksOn = true, remoteOn = false) }
+        Checker.round(context)
+        assertTrue("LinkedIn is checked", requests.isNotEmpty())
+        assertEquals("the boards are off", 0, boardRequests())
+
+        Store.update(context) { it.copy(remoteOn = true) }
+        Checker.round(context) // what the 10-minute alarm runs
+        val boardsRead = requests.map { URI(it).host }.filter { "linkedin" !in it }.toSet()
+        assertEquals("both on: the round reads every board that's due", RemoteBoards.boards.size, boardsRead.size)
+    }
+
+    @Test
+    fun theOldSixHourScheduleIsCancelledOnUpdate() {
         WorkManagerTestInitHelper.initializeTestWorkManager(context)
         val work = WorkManager.getInstance(context)
-        fun state() = work.getWorkInfosForUniqueWork("remote-boards").get().lastOrNull()?.state
-
-        RemoteBoards.schedule(context)
-        assertEquals("on by default", WorkInfo.State.ENQUEUED, state())
-
-        Store.update(context) { it.copy(remoteOn = false) }
-        RemoteBoards.schedule(context)
-        assertEquals(WorkInfo.State.CANCELLED, state())
-
-        Store.update(context) { it.copy(remoteOn = true, checksOn = false) }
-        RemoteBoards.schedule(context)
-        assertEquals("background checks off stops the boards too", WorkInfo.State.CANCELLED, state())
-
-        Store.update(context) { it.copy(checksOn = true) }
-        RemoteBoards.schedule(context)
+        // What 1.8 left behind: a periodic job named "remote-boards".
+        work.enqueueUniquePeriodicWork("remote-boards", ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<IdleWorker>(6, TimeUnit.HOURS).build())
+        fun state() = work.getWorkInfosForUniqueWork("remote-boards").get().single().state
         assertEquals(WorkInfo.State.ENQUEUED, state())
+
+        BootReceiver().onReceive(context, Intent(Intent.ACTION_MY_PACKAGE_REPLACED))
+        assertEquals(WorkInfo.State.CANCELLED, state())
     }
+}
+
+class IdleWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
+    override fun doWork(): Result = Result.success()
 }
