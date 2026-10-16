@@ -8,7 +8,7 @@ There are three versions of it:
 
 | Version | Where it runs | How it tells you |
 | --- | --- | --- |
-| **Job Watch** ([`android/`](android)) | Android phone, checking every 10 minutes in the background | Phone notification, plus optional email and WhatsApp |
+| **Job Watch** ([`android/`](android)) | Android phone: LinkedIn every 10 minutes, remote job boards every 6 hours | Phone notification, plus optional email and WhatsApp |
 | **Desktop app** (`jobs_ui.py`) | Windows PC, while the window is open | Email and WhatsApp; a phone page over Wi-Fi |
 | **iPhone script** ([`iphone/Jobs.js`](iphone/Jobs.js)) | iPhone, in the free Scriptable app, when iOS allows | iPhone notification, plus optional WhatsApp |
 
@@ -23,6 +23,13 @@ are never repeated.
 On first launch, allow notifications and tap **Allow** on the "Finish setting up" card so
 Android doesn't pause the checks. The **Check every 10 minutes** switch turns background
 checks off and on.
+
+**Remote job boards:** besides LinkedIn, Job Watch reads the official feeds of We Work
+Remotely, Himalayas, Jobicy, Remote OK and Remotive. It keeps jobs whose title contains one
+of your positions and that are open worldwide or to the places in your searches (or to
+EMEA, the Middle East or the GCC). These boards ask apps to link to the original listing,
+name them as the source, and call sparingly (Remotive: at most 4 times a day), so they're
+checked every 6 hours, and every job shows which board it came from.
 
 **Build** (JDK 17 and the Android SDK with platform 35):
 

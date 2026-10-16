@@ -7,14 +7,20 @@ object Messages {
     val SAMPLE_JOB = Job("0", "Test job - your alerts work!", "Job Watch", "Anywhere", "",
         "https://www.linkedin.com/jobs/", search = "Test")
 
-    fun headline(jobs: List<Job>) = "${jobs.size} new LinkedIn job${if (jobs.size == 1) "" else "s"}"
+    fun headline(jobs: List<Job>): String {
+        val kind = if (jobs.all { it.source == "LinkedIn" }) "LinkedIn job" else "job"
+        return "${jobs.size} new $kind${if (jobs.size == 1) "" else "s"}"
+    }
+
+    /** Remote boards ask to be named as the source wherever their jobs appear. */
+    private fun via(job: Job) = if (job.source == "LinkedIn") "" else " (via ${job.source})"
 
     private fun bySearch(jobs: List<Job>): Map<String, List<Job>> = jobs.groupBy { it.search }
 
     fun emailSubject(jobs: List<Job>) = "${headline(jobs)}: ${bySearch(jobs).keys.joinToString(", ")}"
 
     fun emailText(jobs: List<Job>): String = bySearch(jobs).entries.joinToString("\n\n") { (search, group) ->
-        search + "\n" + group.joinToString("\n") { "- ${it.title} - ${it.company} (${it.location})\n  ${it.url}" }
+        search + "\n" + group.joinToString("\n") { "- ${it.title} - ${it.company} (${it.location})${via(it)}\n  ${it.url}" }
     }
 
     fun emailHtml(jobs: List<Job>): String = buildString {
@@ -23,7 +29,7 @@ object Messages {
             append("<h3 style='margin:18px 0 6px'>${escape(search)}</h3><ul style='padding-left:18px'>")
             for (job in group) {
                 append("<li style='margin-bottom:6px'><a href='${escape(job.url)}'>${escape(job.title)}</a>")
-                append("<br>${escape(job.company)} <span style='color:#666'>&middot; ${escape(job.location)}</span></li>")
+                append("<br>${escape(job.company)} <span style='color:#666'>&middot; ${escape(job.location)}${escape(via(job))}</span></li>")
             }
             append("</ul>")
         }
@@ -37,7 +43,7 @@ object Messages {
             if (shown == WHATSAPP_MAX_JOBS) break
             lines += "\n*$search*"
             for (job in group.take(WHATSAPP_MAX_JOBS - shown)) {
-                lines += "- ${job.title} @ ${job.company}\n${job.url}"
+                lines += "- ${job.title} @ ${job.company}${via(job)}\n${job.url}"
                 shown++
             }
         }

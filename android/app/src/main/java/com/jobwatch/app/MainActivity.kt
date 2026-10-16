@@ -110,8 +110,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         resumes.value = resumes.value + 1 // re-read permissions the user may have just changed
-        // Both do nothing while background checks are turned off.
+        // These do nothing while background checks are turned off.
         Scheduler.scheduleNext(this)
+        RemoteBoards.schedule(this)
         thread { Checker.run(applicationContext) } // catch up if the last check was a while ago
     }
 
@@ -178,6 +179,7 @@ fun App() {
 
     val setChecks: (Boolean) -> Unit = { on ->
         Store.update(context) { it.copy(checksOn = on) }
+        RemoteBoards.schedule(context) // the remote boards follow the same switch
         if (on) {
             Scheduler.scheduleNext(context)
             runCheck(null)
@@ -235,8 +237,9 @@ fun AboutDialog(data: AppData, onClose: () -> Unit) {
                 if (app.lastUpdateTime > 0) {
                     Text("Installed ${timeText(app.lastUpdateTime)}", style = MaterialTheme.typography.bodySmall, color = muted)
                 }
-                Text("Checks your LinkedIn job searches every ${Scheduler.INTERVAL_MINUTES} minutes and tells you " +
-                    "about new and reposted jobs. It runs entirely on this phone.",
+                Text("Checks your LinkedIn job searches every ${Scheduler.INTERVAL_MINUTES} minutes, and remote job " +
+                    "boards every ${RemoteBoards.INTERVAL_HOURS} hours, and tells you about new and reposted jobs. " +
+                    "It runs entirely on this phone.",
                     style = MaterialTheme.typography.bodyMedium)
                 Text("${data.searches.size} searches · ${data.seen.size} jobs found so far",
                     style = MaterialTheme.typography.bodySmall, color = muted)
@@ -277,14 +280,22 @@ fun MainList(
             SearchRow(search, onRemove = { toRemove = search })
         }
         item(key = "add") { AddSearch(data, onSearchAdded) }
+        item(key = "remote") {
+            RemoteBoardsCard(data, onChange = { on ->
+                Store.update(context) { it.copy(remoteOn = on) }
+                RemoteBoards.schedule(context)
+            })
+        }
 
         item { SectionTitle("Jobs (${data.jobs.size})") }
-        if (data.searches.isNotEmpty()) {
+        val filterLabels = data.searches.map { it.label } +
+            if (data.jobs.any { it.search == RemoteBoards.LABEL }) listOf(RemoteBoards.LABEL) else emptyList()
+        if (filterLabels.isNotEmpty()) {
             item(key = "filters") {
                 Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text("All") })
-                    data.searches.forEach { search ->
-                        FilterChip(selected = filter == search.label, onClick = { filter = search.label }, label = { Text(search.label) })
+                    filterLabels.forEach { label ->
+                        FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) })
                     }
                 }
             }
@@ -347,6 +358,38 @@ fun ChecksCard(data: AppData, onChange: (Boolean) -> Unit) {
                     color = if (limited) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Switch(checked = data.checksOn, onCheckedChange = null)
+        }
+    }
+}
+
+/** On/off switch for the remote job boards, with what they look for and when they were last checked. */
+@Composable
+fun RemoteBoardsCard(data: AppData, onChange: (Boolean) -> Unit) {
+    val positions = data.searches.map { it.keywords.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    val status = when {
+        !data.remoteOn -> "Off"
+        !data.checksOn -> "Paused while background checks are off"
+        positions.isEmpty() -> "Add a search above to choose which jobs to look for"
+        data.remoteLastCheck == 0L -> "First check is on its way"
+        else -> "${data.remoteStatus} · next about ${timeText(data.remoteLastCheck + RemoteBoards.INTERVAL_HOURS * 3_600_000)}"
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth()
+                .toggleable(value = data.remoteOn, onValueChange = onChange, role = Role.Switch)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(RemoteBoards.LABEL, style = MaterialTheme.typography.titleMedium)
+                Text("Remote ${positions.joinToString(" and ").ifBlank { "jobs" }} jobs open worldwide or to your region, " +
+                    "from ${RemoteBoards.BOARD_NAMES}. Checked every ${RemoteBoards.INTERVAL_HOURS} hours, " +
+                    "as often as these boards allow.",
+                    style = MaterialTheme.typography.bodySmall, color = muted)
+                Text(status, style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(checked = data.remoteOn, onCheckedChange = null)
         }
     }
 }
@@ -455,7 +498,8 @@ fun JobRow(job: Job, onOpen: () -> Unit) {
             }
             Text(job.company, style = MaterialTheme.typography.bodyMedium)
             Text(job.location, style = MaterialTheme.typography.bodySmall, color = muted)
-            Text("${job.search} · found ${timeText(job.foundAt)}", style = MaterialTheme.typography.labelSmall, color = muted)
+            val via = if (job.source == "LinkedIn") "" else " · via ${job.source}" // boards ask to be credited
+            Text("${job.search}$via · found ${timeText(job.foundAt)}", style = MaterialTheme.typography.labelSmall, color = muted)
         }
     }
 }

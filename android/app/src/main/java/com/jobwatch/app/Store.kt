@@ -15,6 +15,9 @@ data class AppData(
     val lastRun: Long = 0L,
     val limited: Boolean = false, // LinkedIn said "slow down" on the last check; the next check tries again
     val checksOn: Boolean = true, // false: nothing runs in the background until the user turns it back on
+    val remoteOn: Boolean = true, // also check the remote job boards (every few hours)
+    val remoteLastCheck: Long = 0L,
+    val remoteStatus: String = "",
 )
 
 /**
@@ -82,11 +85,14 @@ object Store {
         .put("jobs", JSONArray(data.jobs.map {
             JSONObject().put("id", it.id).put("title", it.title).put("company", it.company).put("location", it.location)
                 .put("posted", it.posted).put("url", it.url).put("search", it.search).put("foundAt", it.foundAt)
-                .put("isNew", it.isNew)
+                .put("isNew", it.isNew).put("source", it.source)
         }))
         .put("lastRun", data.lastRun)
         .put("limited", data.limited)
         .put("checksOn", data.checksOn)
+        .put("remoteOn", data.remoteOn)
+        .put("remoteLastCheck", data.remoteLastCheck)
+        .put("remoteStatus", data.remoteStatus)
 
     private fun fromJson(json: JSONObject): AppData {
         val searches = json.optJSONArray("searches") ?: JSONArray()
@@ -102,11 +108,15 @@ object Store {
             jobs = List(jobs.length()) { i ->
                 val o = jobs.getJSONObject(i)
                 Job(o.getString("id"), o.optString("title"), o.optString("company"), o.optString("location"),
-                    o.optString("posted"), o.optString("url"), o.optString("search"), o.optLong("foundAt"), o.optBoolean("isNew"))
+                    o.optString("posted"), o.optString("url"), o.optString("search"), o.optLong("foundAt"), o.optBoolean("isNew"),
+                    o.optString("source", "LinkedIn"))
             },
             lastRun = json.optLong("lastRun"),
             limited = json.optBoolean("limited"),
             checksOn = json.optBoolean("checksOn", true),
+            remoteOn = json.optBoolean("remoteOn", true),
+            remoteLastCheck = json.optLong("remoteLastCheck"),
+            remoteStatus = json.optString("remoteStatus"),
         )
     }
 }

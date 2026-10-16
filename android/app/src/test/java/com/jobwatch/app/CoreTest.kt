@@ -62,6 +62,18 @@ class CoreTest {
 
 
     @Test
+    fun remoteBoardJobsAreCreditedInAlerts() {
+        val remote = job(1, search = RemoteBoards.LABEL).copy(source = "Remotive")
+        assertEquals("1 new job", Messages.headline(listOf(remote)))
+        assertEquals("2 new jobs", Messages.headline(listOf(remote, job(2))))
+        assertEquals("1 new LinkedIn job", Messages.headline(listOf(job(2))))
+        assertTrue(Messages.whatsappText(listOf(remote)).contains("@ Acme & Co (via Remotive)"))
+        assertTrue(Messages.emailText(listOf(remote)).contains("(via Remotive)"))
+        assertTrue(Messages.emailHtml(listOf(remote)).contains("(via Remotive)"))
+        assertFalse(Messages.whatsappText(listOf(job(2))).contains("via"))
+    }
+
+    @Test
     fun whatsappMessageIsCappedAndGrouped() {
         val jobs = (0 until 20).map { job(it, if (it < 12) "python developer @ Dubai" else "data analyst @ Riyadh") }
         val text = Messages.whatsappText(jobs)

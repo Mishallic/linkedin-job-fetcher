@@ -18,6 +18,7 @@ data class Job(
     val search: String = "",
     val foundAt: Long = 0L,
     val isNew: Boolean = false,
+    val source: String = "LinkedIn", // the site that published it; remote boards require naming them
 )
 
 data class Search(

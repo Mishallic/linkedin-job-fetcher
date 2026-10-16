@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
+import androidx.work.testing.WorkManagerTestInitHelper
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -60,5 +63,27 @@ class SchedulerTest {
         Store.update(context) { it.copy(checksOn = true) }
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
         assertNotNull(alarms.peekNextScheduledAlarm())
+    }
+
+    @Test
+    fun remoteBoardsFollowBothSwitches() {
+        WorkManagerTestInitHelper.initializeTestWorkManager(context)
+        val work = WorkManager.getInstance(context)
+        fun state() = work.getWorkInfosForUniqueWork("remote-boards").get().lastOrNull()?.state
+
+        RemoteBoards.schedule(context)
+        assertEquals("on by default", WorkInfo.State.ENQUEUED, state())
+
+        Store.update(context) { it.copy(remoteOn = false) }
+        RemoteBoards.schedule(context)
+        assertEquals(WorkInfo.State.CANCELLED, state())
+
+        Store.update(context) { it.copy(remoteOn = true, checksOn = false) }
+        RemoteBoards.schedule(context)
+        assertEquals("background checks off stops the boards too", WorkInfo.State.CANCELLED, state())
+
+        Store.update(context) { it.copy(checksOn = true) }
+        RemoteBoards.schedule(context)
+        assertEquals(WorkInfo.State.ENQUEUED, state())
     }
 }

@@ -134,7 +134,7 @@ class UiTest {
     @Test
     fun aboutShowsTheVersion() {
         compose.onNodeWithContentDescription("About Job Watch").performClick()
-        compose.onNodeWithText("Version 1.6 (build 7)").assertIsDisplayed()
+        compose.onNodeWithText("Version 1.7 (build 8)").assertIsDisplayed()
         compose.onNodeWithText("jobs found so far", substring = true).assertIsDisplayed()
         screenshot("7-about", ShadowDialog.getLatestDialog().window!!.decorView)
     }
@@ -149,6 +149,18 @@ class UiTest {
             compose.onAllNodesWithText("Background checks stopped", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
         screenshot("8-stopped")
+    }
+
+    @Test
+    fun remoteBoardsCardShowsAndTurnsOff() {
+        val card = isToggleable() and hasText(RemoteBoards.LABEL)
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(card)
+        compose.onNode(card and hasText("software engineer and data analyst", substring = true)).assertIsDisplayed()
+        screenshot("9-remote-boards")
+        compose.onNode(card).performClick()
+        compose.waitForIdle()
+        assertFalse(Store.load(compose.activity).remoteOn)
+        compose.onNode(card and hasText("Off")).assertIsDisplayed()
     }
 
     @Test
