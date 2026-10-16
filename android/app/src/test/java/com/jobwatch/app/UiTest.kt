@@ -199,6 +199,34 @@ class UiTest {
     }
 
     @Test
+    fun selectedJobsCanBeDeletedAndTheDeleteUndone() {
+        val activity = compose.activity
+        Checker.run(activity, force = true) // the fake LinkedIn page's 10 jobs
+        compose.waitForIdle()
+        val jobs = Store.load(activity).jobs
+        val (first, second) = jobs.filter { j -> jobs.count { it.title == j.title } == 1 }.take(2)
+        val list = compose.onNode(hasScrollToIndexAction())
+
+        list.performScrollToNode(hasText(first.title))
+        compose.onNode(hasClickAction() and hasText(first.title)).performTouchInput { longClick() }
+        list.performScrollToNode(hasText(second.title))
+        compose.onNode(hasClickAction() and hasText(second.title)).performClick()
+        compose.onNodeWithText("2 selected").assertIsDisplayed()
+        screenshot("11-delete")
+
+        compose.onNodeWithContentDescription("Delete selected jobs").performClick()
+        compose.waitForIdle()
+        assertEquals(8, Store.load(activity).jobs.size)
+        compose.onNodeWithText("Deleted 2 jobs").assertIsDisplayed()
+        compose.onNodeWithText(first.title).assertDoesNotExist()
+        screenshot("12-deleted")
+
+        compose.onNodeWithText("Undo").performClick()
+        compose.waitForIdle()
+        assertEquals("back where they were", jobs.map { it.id }, Store.load(activity).jobs.map { it.id })
+    }
+
+    @Test
     fun remoteBoardsCardShowsAndTurnsOff() {
         val card = isToggleable() and hasText(RemoteBoards.LABEL)
         compose.onNode(hasScrollToIndexAction()).performScrollToNode(card)

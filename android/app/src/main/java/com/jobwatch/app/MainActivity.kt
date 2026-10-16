@@ -44,6 +44,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
@@ -65,8 +66,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -190,6 +193,17 @@ fun App() {
         }
     }
 
+    /** Delete jobs, with a few seconds to undo. */
+    fun deleteJobs(ids: Set<String>) {
+        val removed = Store.deleteJobs(context, ids)
+        scope.launch {
+            snackbar.currentSnackbarData?.dismiss() // a newer delete replaces the last one's undo
+            val result = snackbar.showSnackbar("Deleted ${removed.size} job${if (removed.size == 1) "" else "s"}",
+                actionLabel = "Undo", duration = SnackbarDuration.Long)
+            if (result == SnackbarResult.ActionPerformed) Store.restoreJobs(context, removed)
+        }
+    }
+
     val setChecks: (Boolean) -> Unit = { on ->
         Store.update(context) { it.copy(checksOn = on) } // the remote boards follow the same switch
         if (on) {
@@ -228,7 +242,7 @@ fun App() {
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         MainList(data, resumed, padding, onSearchAdded = { label -> runCheck(setOf(label)) },
-            onChecksChanged = setChecks)
+            onChecksChanged = setChecks, onDelete = ::deleteJobs)
     }
     if (showAbout) AboutDialog(data, onClose = { showAbout = false })
 }
@@ -268,6 +282,7 @@ fun MainList(
     padding: PaddingValues,
     onSearchAdded: (String) -> Unit,
     onChecksChanged: (Boolean) -> Unit,
+    onDelete: (Set<String>) -> Unit,
 ) {
     val context = LocalContext.current
     var filter by rememberSaveable { mutableStateOf<String?>(null) }
@@ -346,6 +361,10 @@ fun MainList(
                 onSelectAll = { selected = jobs.map { it.id }.toSet() }, // everything the current filter shows
                 onMark = { isNew ->
                     Store.setNew(context, selected, isNew)
+                    selected = emptySet()
+                },
+                onDelete = {
+                    onDelete(selected)
                     selected = emptySet()
                 },
                 onCancel = { selected = emptySet() },
@@ -576,13 +595,14 @@ fun JobRow(
     }
 }
 
-/** The bar shown while jobs are selected: mark them read or new, select all, or cancel. */
+/** The bar shown while jobs are selected: mark them read or new, delete them, select all, or cancel. */
 @Composable
 fun SelectionBar(
     count: Int,
     bottomInset: Dp,
     onSelectAll: () -> Unit,
     onMark: (isNew: Boolean) -> Unit,
+    onDelete: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -592,6 +612,7 @@ fun SelectionBar(
                 IconButton(onClick = onCancel) { Icon(Icons.Filled.Close, contentDescription = "Cancel selection") }
                 Text("$count selected", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
                 TextButton(onClick = onSelectAll) { Text("Select all") }
+                IconButton(onClick = onDelete) { Icon(Icons.Filled.Delete, contentDescription = "Delete selected jobs") }
             }
             Row(Modifier.padding(start = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { onMark(false) }, modifier = Modifier.weight(1f)) { Text("Mark as read") }

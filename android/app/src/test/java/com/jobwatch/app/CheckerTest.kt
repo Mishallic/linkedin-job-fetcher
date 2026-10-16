@@ -88,6 +88,24 @@ class CheckerTest {
     }
 
     @Test
+    fun deletedJobsDontComeBackAndUndoPutsThemWhereTheyWere() {
+        linkedInAnswers(200)
+        Checker.run(context, force = true)
+        val before = Store.load(context).jobs.map { it.id }
+        assertEquals(10, before.size)
+        val doomed = setOf(before[0], before[4])
+
+        val removed = Store.deleteJobs(context, doomed)
+        assertEquals(before - doomed, Store.load(context).jobs.map { it.id })
+        Store.restoreJobs(context, removed)
+        assertEquals("undo puts them back in place", before, Store.load(context).jobs.map { it.id })
+
+        Store.deleteJobs(context, doomed)
+        assertEquals("a later check doesn't bring them back", emptyList<Job>(), Checker.run(context, force = true))
+        assertEquals(before - doomed, Store.load(context).jobs.map { it.id })
+    }
+
+    @Test
     fun backgroundCheckRightAfterAnotherIsSkipped() {
         linkedInAnswers(200)
         Checker.run(context)

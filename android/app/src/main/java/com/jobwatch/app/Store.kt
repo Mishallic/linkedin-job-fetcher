@@ -68,6 +68,28 @@ object Store {
     fun setNew(context: Context, ids: Set<String>, isNew: Boolean) =
         update(context) { d -> d.copy(jobs = d.jobs.map { if (it.id in ids) it.copy(isNew = isNew) else it }) }
 
+    /**
+     * Delete jobs from the list. Their ids stay in [AppData.seen], so a later check doesn't bring
+     * them back as new. Returns them with their places in the list, for [restoreJobs].
+     */
+    fun deleteJobs(context: Context, ids: Set<String>): List<IndexedValue<Job>> {
+        var removed = emptyList<IndexedValue<Job>>()
+        update(context) { d ->
+            removed = d.jobs.withIndex().filter { it.value.id in ids }
+            d.copy(jobs = d.jobs.filter { it.id !in ids })
+        }
+        return removed
+    }
+
+    /** Undo [deleteJobs]: put the jobs back where they were. */
+    fun restoreJobs(context: Context, removed: List<IndexedValue<Job>>) = update(context) { d ->
+        val jobs = d.jobs.toMutableList()
+        for ((index, job) in removed.sortedBy { it.index }) {
+            if (jobs.none { it.id == job.id }) jobs.add(minOf(index, jobs.size), job)
+        }
+        d.copy(jobs = jobs)
+    }
+
     private fun write(context: Context, data: AppData) {
         val tidy = data.copy(
             searches = data.searches.distinctBy { it.label },
