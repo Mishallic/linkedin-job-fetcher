@@ -24,6 +24,10 @@ On first launch, allow notifications and tap **Allow** on the "Finish setting up
 Android doesn't pause the checks. The **Check every 10 minutes** switch turns background
 checks off and on.
 
+**New and read:** a filled dot marks a new job, an empty circle a read one. Tap the dot to
+switch it, or open the job to mark it read. Long-press a job to select several, then
+**Mark as read**, **Mark as new** or **Select all** from the bar at the bottom.
+
 **Remote job boards:** besides LinkedIn, Job Watch reads the official feeds of We Work
 Remotely, Himalayas, Jobicy, Remote OK and Remotive. It keeps jobs whose title contains one
 of your positions and that are open worldwide or to the places in your searches (or to

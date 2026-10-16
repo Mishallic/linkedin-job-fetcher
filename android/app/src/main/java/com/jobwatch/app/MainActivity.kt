@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
 package com.jobwatch.app
 
@@ -17,6 +17,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +51,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Badge
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -62,6 +67,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -81,15 +87,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.pm.PackageInfoCompat
@@ -260,58 +270,85 @@ fun MainList(
     val context = LocalContext.current
     var filter by rememberSaveable { mutableStateOf<String?>(null) }
     var toRemove by remember { mutableStateOf<Search?>(null) }
+    var selected by remember { mutableStateOf(emptySet<String>()) } // ids of jobs picked with a long press
+    val selecting = selected.isNotEmpty()
     val jobs = data.jobs.filter { filter == null || it.search == filter }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    BackHandler(enabled = selecting) { selected = emptySet() }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().imePadding(),
-        contentPadding = PaddingValues(
-            start = 16.dp, end = 16.dp,
-            top = padding.calculateTopPadding() + 4.dp,
-            bottom = padding.calculateBottomPadding() + 24.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item(key = "checks") { ChecksCard(data, onChecksChanged) }
-        if (data.checksOn) item(key = "setup") { BackgroundSetup(resumed) }
+    Box(Modifier.fillMaxSize()) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().imePadding(),
+            contentPadding = PaddingValues(
+                start = 16.dp, end = 16.dp,
+                top = padding.calculateTopPadding() + 4.dp,
+                bottom = padding.calculateBottomPadding() + if (selecting) 140.dp else 24.dp, // room for the selection bar
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item(key = "checks") { ChecksCard(data, onChecksChanged) }
+            if (data.checksOn) item(key = "setup") { BackgroundSetup(resumed) }
 
-        item { SectionTitle("Searches") }
-        items(data.searches, key = { "search:" + it.label }) { search ->
-            SearchRow(search, onRemove = { toRemove = search })
-        }
-        item(key = "add") { AddSearch(data, onSearchAdded) }
-        item(key = "remote") {
-            RemoteBoardsCard(data, onChange = { on ->
-                Store.update(context) { it.copy(remoteOn = on) }
-                RemoteBoards.schedule(context)
-            })
-        }
+            item { SectionTitle("Searches") }
+            items(data.searches, key = { "search:" + it.label }) { search ->
+                SearchRow(search, onRemove = { toRemove = search })
+            }
+            item(key = "add") { AddSearch(data, onSearchAdded) }
+            item(key = "remote") {
+                RemoteBoardsCard(data, onChange = { on ->
+                    Store.update(context) { it.copy(remoteOn = on) }
+                    RemoteBoards.schedule(context)
+                })
+            }
 
-        item { SectionTitle("Jobs (${data.jobs.size})") }
-        val filterLabels = data.searches.map { it.label } +
-            if (data.jobs.any { it.search == RemoteBoards.LABEL }) listOf(RemoteBoards.LABEL) else emptyList()
-        if (filterLabels.isNotEmpty()) {
-            item(key = "filters") {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text("All") })
-                    filterLabels.forEach { label ->
-                        FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) })
+            val newCount = data.jobs.count { it.isNew }
+            item { SectionTitle("Jobs (${data.jobs.size}${if (newCount > 0) ", $newCount new" else ""})") }
+            val filterLabels = data.searches.map { it.label } +
+                if (data.jobs.any { it.search == RemoteBoards.LABEL }) listOf(RemoteBoards.LABEL) else emptyList()
+            if (filterLabels.isNotEmpty()) {
+                item(key = "filters") {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text("All") })
+                        filterLabels.forEach { label ->
+                            FilterChip(selected = filter == label, onClick = { filter = label }, label = { Text(label) })
+                        }
                     }
                 }
             }
-        }
-        if (jobs.isEmpty()) {
-            item {
-                Text("No jobs yet. New ones show up here as they're found.", color = muted,
-                    modifier = Modifier.padding(vertical = 16.dp))
+            if (jobs.isEmpty()) {
+                item {
+                    Text("No jobs yet. New ones show up here as they're found.", color = muted,
+                        modifier = Modifier.padding(vertical = 16.dp))
+                }
+            }
+            items(jobs, key = { "job:" + it.id }) { job ->
+                JobRow(
+                    job = job,
+                    selecting = selecting,
+                    selected = job.id in selected,
+                    onOpen = {
+                        // The "new" dot stays until you open that job (or mark it read).
+                        if (job.isNew) Store.setNew(context, setOf(job.id), false)
+                        openUrl(context, job.url)
+                    },
+                    onToggleSelect = { selected = if (job.id in selected) selected - job.id else selected + job.id },
+                    onToggleNew = { Store.setNew(context, setOf(job.id), !job.isNew) },
+                )
             }
         }
-        items(jobs, key = { "job:" + it.id }) { job ->
-            JobRow(job) {
-                // The "new" dot stays until you open that job.
-                if (job.isNew) Store.update(context) { d -> d.copy(jobs = d.jobs.map { if (it.id == job.id) it.copy(isNew = false) else it }) }
-                openUrl(context, job.url)
-            }
+
+        if (selecting) {
+            SelectionBar(
+                count = selected.size,
+                bottomInset = padding.calculateBottomPadding(),
+                onSelectAll = { selected = jobs.map { it.id }.toSet() }, // everything the current filter shows
+                onMark = { isNew ->
+                    Store.setNew(context, selected, isNew)
+                    selected = emptySet()
+                },
+                onCancel = { selected = emptySet() },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
         }
     }
 
@@ -484,22 +521,80 @@ fun AddSearch(data: AppData, onAdded: (String) -> Unit) {
     }
 }
 
+/**
+ * One job. Tap to open it (and mark it read); tap the dot to switch between new (filled) and
+ * read (empty); long-press to start selecting several jobs. While selecting, a tap selects.
+ */
 @Composable
-fun JobRow(job: Job, onOpen: () -> Unit) {
-    val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    Card(onClick = onOpen, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (job.isNew) {
-                    Box(Modifier.size(8.dp).background(MaterialTheme.colorScheme.primary, CircleShape))
-                    Spacer(Modifier.width(8.dp))
+fun JobRow(
+    job: Job,
+    selecting: Boolean,
+    selected: Boolean,
+    onOpen: () -> Unit,
+    onToggleSelect: () -> Unit,
+    onToggleNew: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    // Secondary lines follow the card's text colour, so they stay readable on a selected card.
+    val muted = if (selected) scheme.onSecondaryContainer.copy(alpha = 0.8f) else scheme.onSurfaceVariant
+    val colors = if (selected) CardDefaults.cardColors(containerColor = scheme.secondaryContainer, contentColor = scheme.onSecondaryContainer)
+    else CardDefaults.cardColors()
+    Card(
+        modifier = Modifier.fillMaxWidth()
+            .clip(CardDefaults.shape)
+            .combinedClickable(
+                onClick = { if (selecting) onToggleSelect() else onOpen() },
+                onLongClick = onToggleSelect,
+                onLongClickLabel = "Select",
+            ),
+        colors = colors,
+    ) {
+        Row(Modifier.padding(start = 4.dp, end = 16.dp, top = 4.dp, bottom = 12.dp)) {
+            if (selecting) {
+                Checkbox(checked = selected, onCheckedChange = { onToggleSelect() })
+            } else {
+                IconButton(
+                    onClick = onToggleNew,
+                    modifier = Modifier.semantics { contentDescription = if (job.isNew) "Mark as read" else "Mark as new" },
+                ) {
+                    val dot = Modifier.size(10.dp)
+                    Box(if (job.isNew) dot.background(MaterialTheme.colorScheme.primary, CircleShape)
+                        else dot.border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape))
                 }
-                Text(job.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             }
-            Text(job.company, style = MaterialTheme.typography.bodyMedium)
-            Text(job.location, style = MaterialTheme.typography.bodySmall, color = muted)
-            val via = if (job.source == "LinkedIn") "" else " · via ${job.source}" // boards ask to be credited
-            Text("${job.search}$via · found ${timeText(job.foundAt)}", style = MaterialTheme.typography.labelSmall, color = muted)
+            Column(Modifier.weight(1f).padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(job.title, style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (job.isNew) FontWeight.SemiBold else FontWeight.Normal)
+                Text(job.company, style = MaterialTheme.typography.bodyMedium)
+                Text(job.location, style = MaterialTheme.typography.bodySmall, color = muted)
+                val via = if (job.source == "LinkedIn") "" else " · via ${job.source}" // boards ask to be credited
+                Text("${job.search}$via · found ${timeText(job.foundAt)}", style = MaterialTheme.typography.labelSmall, color = muted)
+            }
+        }
+    }
+}
+
+/** The bar shown while jobs are selected: mark them read or new, select all, or cancel. */
+@Composable
+fun SelectionBar(
+    count: Int,
+    bottomInset: Dp,
+    onSelectAll: () -> Unit,
+    onMark: (isNew: Boolean) -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(modifier.fillMaxWidth(), tonalElevation = 3.dp, shadowElevation = 8.dp) {
+        Column(Modifier.padding(start = 8.dp, end = 16.dp, top = 4.dp, bottom = 12.dp + bottomInset)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onCancel) { Icon(Icons.Filled.Close, contentDescription = "Cancel selection") }
+                Text("$count selected", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = onSelectAll) { Text("Select all") }
+            }
+            Row(Modifier.padding(start = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { onMark(false) }, modifier = Modifier.weight(1f)) { Text("Mark as read") }
+                Button(onClick = { onMark(true) }, modifier = Modifier.weight(1f)) { Text("Mark as new") }
+            }
         }
     }
 }

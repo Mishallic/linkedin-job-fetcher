@@ -17,6 +17,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
@@ -134,7 +136,7 @@ class UiTest {
     @Test
     fun aboutShowsTheVersion() {
         compose.onNodeWithContentDescription("About Job Watch").performClick()
-        compose.onNodeWithText("Version 1.7 (build 8)").assertIsDisplayed()
+        compose.onNodeWithText("Version 1.8 (build 9)").assertIsDisplayed()
         compose.onNodeWithText("jobs found so far", substring = true).assertIsDisplayed()
         screenshot("7-about", ShadowDialog.getLatestDialog().window!!.decorView)
     }
@@ -149,6 +151,51 @@ class UiTest {
             compose.onAllNodesWithText("Background checks stopped", substring = true).fetchSemanticsNodes().isNotEmpty()
         }
         screenshot("8-stopped")
+    }
+
+    @Test
+    fun jobsCanBeMarkedReadOrNewOneByOneOrTogether() {
+        val activity = compose.activity
+        Checker.run(activity, force = true) // the fake LinkedIn page's 10 jobs, all new
+        compose.waitForIdle()
+        fun newCount() = Store.load(activity).jobs.count { it.isNew }
+        assertEquals(10, newCount())
+        val list = compose.onNode(hasScrollToIndexAction())
+        list.performScrollToNode(hasText(Store.load(activity).jobs.first().title))
+
+        // One at a time: tap a job's dot.
+        compose.onAllNodesWithContentDescription("Mark as read")[0].performClick()
+        compose.waitForIdle()
+        assertEquals(9, newCount())
+        compose.onAllNodesWithContentDescription("Mark as new")[0].performClick()
+        compose.waitForIdle()
+        assertEquals(10, newCount())
+
+        // Several at once: long-press to start selecting, then use the bar at the bottom.
+        val jobs = Store.load(activity).jobs
+        val job = jobs.first { j -> jobs.count { it.title == j.title } == 1 }
+        list.performScrollToNode(hasText(job.title))
+        compose.onNode(hasClickAction() and hasText(job.title)).performTouchInput { longClick() }
+        compose.onNodeWithText("1 selected").assertIsDisplayed()
+        compose.onNodeWithText("Select all").performClick()
+        compose.onNodeWithText("10 selected").assertIsDisplayed()
+        screenshot("10-selecting")
+        compose.onNodeWithText("Mark as read").performClick()
+        compose.waitForIdle()
+        assertEquals(0, newCount())
+        compose.onNodeWithText("Select all").assertDoesNotExist() // the selection ends after marking
+
+        // And back to new for two of them.
+        compose.onNode(hasClickAction() and hasText(job.title)).performTouchInput { longClick() }
+        val other = jobs.first { j -> j.id != job.id && jobs.count { it.title == j.title } == 1 }
+        list.performScrollToNode(hasText(other.title))
+        compose.onNode(hasClickAction() and hasText(other.title)).performClick() // while selecting, a tap selects
+        compose.onNodeWithText("2 selected").assertIsDisplayed()
+        compose.onNodeWithText("Mark as new").performClick()
+        compose.waitForIdle()
+        assertEquals(setOf(job.id, other.id), Store.load(activity).jobs.filter { it.isNew }.map { it.id }.toSet())
+        assertTrue("selecting never opened a job", generateSequence { shadowOf(activity).nextStartedActivity }
+            .none { it.dataString?.startsWith("https://www.linkedin.com/jobs/view/") == true })
     }
 
     @Test

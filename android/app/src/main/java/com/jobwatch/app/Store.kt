@@ -63,6 +63,10 @@ object Store {
         return next
     }
 
+    /** Mark jobs as new (dot) or read (no dot). */
+    fun setNew(context: Context, ids: Set<String>, isNew: Boolean) =
+        update(context) { d -> d.copy(jobs = d.jobs.map { if (it.id in ids) it.copy(isNew = isNew) else it }) }
+
     private fun write(context: Context, data: AppData) {
         val tidy = data.copy(
             searches = data.searches.distinctBy { it.label },
