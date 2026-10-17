@@ -47,6 +47,16 @@ object Scheduler {
     /** When the next background check is due, or 0 if none is scheduled. */
     fun nextCheckAt(context: Context): Long = prefs(context).getLong("nextAt", 0L)
 
+    /**
+     * Whether a background check is on its way: an alarm was set for a time that hasn't come,
+     * and the phone still has it. The phone forgets alarms (and their intents) when it restarts,
+     * and when the app is updated or force-stopped. [BootReceiver] covers the first two; opening
+     * the app covers the rest, and leaves a healthy chain alone ([MainActivity.onResume]).
+     */
+    fun isScheduled(context: Context): Boolean =
+        nextCheckAt(context) > System.currentTimeMillis() && PendingIntent.getBroadcast(context, 0,
+            Intent(context, CheckReceiver::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE) != null
+
     fun canExact(context: Context): Boolean =
         Build.VERSION.SDK_INT < 31 || context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
 

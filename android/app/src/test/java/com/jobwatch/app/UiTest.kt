@@ -239,6 +239,22 @@ class UiTest {
     }
 
     @Test
+    fun comingBackToTheAppDoesNotCheckAgain() {
+        val activity = compose.activity
+        compose.waitUntil(15_000) { Store.load(activity).lastRun != 0L } // the first open's check is done
+        assertTrue("that check set the 10-minute alarm", Scheduler.isScheduled(activity))
+        fun linkedInRequests() = requested.count { "linkedin.com" in it }
+        val before = linkedInRequests()
+
+        compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED) // switch to another app...
+        compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED) // ...and come back
+        compose.waitForIdle()
+        Thread.sleep(500) // a check would start on a thread straight away
+        assertEquals("an alarm is on its way: coming back is no reason to check", before, linkedInRequests())
+        compose.onNodeWithText("Last check", substring = true).assertIsDisplayed()
+    }
+
+    @Test
     fun slowDownIsExplainedAndRefreshStillWorks() {
         val activity = compose.activity
         val normal = Http.fake

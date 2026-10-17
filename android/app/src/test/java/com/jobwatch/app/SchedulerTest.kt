@@ -1,6 +1,7 @@
 package com.jobwatch.app
 
 import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.test.core.app.ApplicationProvider
@@ -14,6 +15,7 @@ import androidx.work.WorkerParameters
 import androidx.work.testing.WorkManagerTestInitHelper
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -71,6 +73,31 @@ class SchedulerTest {
         Store.update(context) { it.copy(checksOn = true) }
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
         assertNotNull(alarms.peekNextScheduledAlarm())
+    }
+
+    /** Opening the app used to check LinkedIn every time. It may only do so when no alarm is on its way. */
+    @Test
+    fun openingTheAppOnlyChecksWhenNoAlarmIsOnItsWay() {
+        assertFalse("fresh install: nothing scheduled yet", Scheduler.isScheduled(context))
+
+        Scheduler.scheduleNext(context)
+        assertTrue("an alarm is on its way: opening the app leaves it alone", Scheduler.isScheduled(context))
+
+        // Its time came and it hasn't fired (the phone was asleep): catch up.
+        Scheduler.scheduleNext(context, 0)
+        assertFalse(Scheduler.isScheduled(context))
+
+        // The phone forgot the alarm: a restart, an update or a force-stop drops its intent.
+        Scheduler.scheduleNext(context)
+        assertTrue(Scheduler.isScheduled(context))
+        PendingIntent.getBroadcast(context, 0, Intent(context, CheckReceiver::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE)!!.cancel()
+        assertFalse(Scheduler.isScheduled(context))
+
+        // Turned off: nothing on its way, and nothing to start.
+        Store.update(context) { it.copy(checksOn = false) }
+        Scheduler.stop(context)
+        assertFalse(Scheduler.isScheduled(context))
     }
 
     @Test

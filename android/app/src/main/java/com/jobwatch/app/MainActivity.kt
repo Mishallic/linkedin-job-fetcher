@@ -124,9 +124,13 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         resumes.value = resumes.value + 1 // re-read permissions the user may have just changed
-        // These do nothing while background checks are turned off.
-        Scheduler.scheduleNext(this)
-        thread { Checker.round(applicationContext) } // catch up if the last check was a while ago
+        // Opening the app is no reason to check LinkedIn: the 10-minute alarm does that. Only when
+        // the chain broke (the phone forgot the alarm, or its time came and it never fired) start
+        // it again and catch up now. Nothing happens while background checks are turned off.
+        if (Store.load(this).checksOn && !Scheduler.isScheduled(this)) {
+            Scheduler.scheduleNext(this)
+            thread { Checker.round(applicationContext) }
+        }
     }
 
     companion object {
