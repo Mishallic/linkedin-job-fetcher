@@ -32,7 +32,7 @@ object RemoteBoards {
     const val MOBILE_DATA_MINUTES = 60L
     private const val EVERY_ROUND = 5L // no limit: read on every round; this only stops a refresh right after one
     private const val LEGACY_WORK = "remote-boards" // 1.8 and earlier read the boards every 6 hours with WorkManager
-    private const val USER_AGENT = "Mozilla/5.0 (Linux; Android) JobWatch/1.9"
+    private const val USER_AGENT = "Mozilla/5.0 (Linux; Android) JobWatch/1.10"
     private const val FIRST_CHECK_DAYS = 7L // the first check shows the past week's jobs
     private const val MAX_AGE_DAYS = 14L
     private const val DAY_MS = 86_400_000L

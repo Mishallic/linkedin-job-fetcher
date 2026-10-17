@@ -22,7 +22,8 @@ are never repeated.
 [Releases](../../releases) on the phone, open it, and allow installing from that source.
 On first launch, allow notifications and tap **Allow** on the "Finish setting up" card so
 Android doesn't pause the checks. The **Check every 10 minutes** switch turns background
-checks off and on.
+checks off and on. Opening the app doesn't check again; the next check comes on the
+10-minute schedule, and the refresh button at the top checks at once.
 
 **New, read and deleted:** a filled dot marks a new job, an empty circle a read one. Tap the
 dot to switch it, or open the job to mark it read. Long-press a job to select several, then
