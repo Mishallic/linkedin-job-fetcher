@@ -23,14 +23,15 @@ import kotlin.concurrent.thread
  * listing and name the board as the source (every job keeps its URL and source), and two of them
  * limit how often they may be read: Jobicy at most hourly, Remotive at most 4 times a day.
  *
- * The boards are read on the same 10-minute rounds as LinkedIn, each one only when it's due:
- * the boards without a limit every round, Jobicy and Remotive as often as their terms allow.
- * On mobile data every board is read at most hourly, since a round downloads about 400 KB.
+ * The boards are read on the same checks as LinkedIn, each one only when it's due: the boards
+ * without a limit of their own every 10 minutes, Jobicy and Remotive as often as their terms
+ * allow. On mobile data every board is read at most hourly, since reading them all downloads
+ * about 400 KB.
  */
 object RemoteBoards {
     const val LABEL = "Remote job boards"
     const val MOBILE_DATA_MINUTES = 60L
-    private const val EVERY_ROUND = 5L // no limit: read on every round; this only stops a refresh right after one
+    private const val UNLIMITED = Scheduler.INTERVAL_MINUTES // boards with no limit of their own: every 10 minutes
     private const val LEGACY_WORK = "remote-boards" // 1.8 and earlier read the boards every 6 hours with WorkManager
     private const val USER_AGENT = "Mozilla/5.0 (Linux; Android) JobWatch/1.11"
     private const val FIRST_CHECK_DAYS = 7L // the first check shows the past week's jobs
@@ -47,15 +48,22 @@ object RemoteBoards {
         val postedAt: Long, val url: String, val source: String,
     )
 
+    /** What one read of the boards did: the new jobs, and a line for the history (null when no board was due). */
+    class Read(val jobs: List<Job>, val note: String?) {
+        companion object {
+            val NONE = Read(emptyList(), null)
+        }
+    }
+
     /** A board's feed, and the least time its terms allow between two reads. */
     class Board(val name: String, val gapMinutes: Long, val read: (positions: List<String>) -> List<Listing>)
 
     val boards = listOf(
-        Board("We Work Remotely", EVERY_ROUND) { parseWeWorkRemotely(get("https://weworkremotely.com/remote-jobs.rss")) },
-        Board("Himalayas", EVERY_ROUND) { positions ->
+        Board("We Work Remotely", UNLIMITED) { parseWeWorkRemotely(get("https://weworkremotely.com/remote-jobs.rss")) },
+        Board("Himalayas", UNLIMITED) { positions ->
             positions.flatMap { parseHimalayas(get("https://himalayas.app/jobs/api/search?q=${encode(it)}&worldwide=true")) }
         },
-        Board("Remote OK", EVERY_ROUND) { parseRemoteOk(get("https://remoteok.com/api")) },
+        Board("Remote OK", UNLIMITED) { parseRemoteOk(get("https://remoteok.com/api")) },
         Board("Jobicy", 60) { parseJobicy(get("https://jobicy.com/api/v2/remote-jobs?count=100")) },
         Board("Remotive", 6 * 60) { parseRemotive(get("https://remotive.com/api/remote-jobs?limit=150")) },
     )
@@ -69,11 +77,22 @@ object RemoteBoards {
     }
 
     /**
-     * On mobile data, a board without a stricter limit waits 55 minutes, so that on the 10-minute
-     * rounds it's read every hour rather than every 70 minutes.
+     * On mobile data, a board without a stricter limit waits 58 minutes, so that with checks at most
+     * every 2 minutes it's read about hourly rather than every 62 minutes.
      */
     fun gapMinutes(board: Board, mobileData: Boolean): Long =
-        if (mobileData) maxOf(board.gapMinutes, MOBILE_DATA_MINUTES - EVERY_ROUND) else board.gapMinutes
+        if (mobileData) maxOf(board.gapMinutes, MOBILE_DATA_MINUTES - Scheduler.SPACING_MINUTES) else board.gapMinutes
+
+    /** The positions your searches look for, e.g. "software engineer" and "data analyst". */
+    private fun positionsOf(data: AppData) =
+        data.searches.map { it.keywords.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
+
+    /** When the next board is due, or null while the boards aren't being read. */
+    fun nextDueAt(context: Context, data: AppData): Long? {
+        if (!data.remoteOn || !data.checksOn || positionsOf(data).isEmpty()) return null
+        val mobileData = onMobileData(context)
+        return boards.minOf { (data.boardChecks[it.name] ?: data.remoteLastCheck) + gapMinutes(it, mobileData) * 60_000 }
+    }
 
     // ---------- reading each board's feed ----------
 
@@ -188,29 +207,29 @@ object RemoteBoards {
     private val lock = ReentrantLock()
 
     /**
-     * Read the boards that are due, for your positions. Saves and returns the new jobs, and with
-     * [alert] announces them. Reads nothing while the boards are off, while background checks are
-     * off (unless [force]: you asked), or while another read of the boards is running.
+     * Read the boards that are due, for your positions, and save the new jobs; announcing them is
+     * up to the caller ([Checker]). Reads nothing while the boards are off, while background checks
+     * are off (unless [force]: you asked), or while another read of the boards is running.
      */
-    fun check(context: Context, force: Boolean = false, alert: Boolean = true): List<Job> {
-        if (!lock.tryLock()) return emptyList()
+    fun check(context: Context, force: Boolean = false): Read {
+        if (!lock.tryLock()) return Read.NONE
         try {
-            return checkDue(context, force, alert)
+            return checkDue(context, force)
         } finally {
             lock.unlock()
         }
     }
 
-    private fun checkDue(context: Context, force: Boolean, alert: Boolean): List<Job> {
+    private fun checkDue(context: Context, force: Boolean): Read {
         val now = System.currentTimeMillis()
         val data = Store.load(context)
-        val positions = data.searches.map { it.keywords.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
-        if (!data.remoteOn || (!data.checksOn && !force) || positions.isEmpty()) return emptyList()
+        val positions = positionsOf(data)
+        if (!data.remoteOn || (!data.checksOn && !force) || positions.isEmpty()) return Read.NONE
         val mobileData = onMobileData(context)
         val due = boards.filter { board ->
             now - (data.boardChecks[board.name] ?: data.remoteLastCheck) >= gapMinutes(board, mobileData) * 60_000
         }
-        if (due.isEmpty()) return emptyList()
+        if (due.isEmpty()) return Read.NONE
         // Note the reads before making them, so each board's limit holds even if this one is cut short.
         Store.update(context) { it.copy(boardChecks = it.boardChecks + due.associate { board -> board.name to now }) }
         val places = placesOf(data.searches)
@@ -244,8 +263,7 @@ object RemoteBoards {
         Store.update(context) { current ->
             current.copy(seen = current.seen + newSeen, jobs = fresh + current.jobs, remoteLastCheck = now, remoteStatus = status)
         }
-        if (alert && fresh.isNotEmpty()) Alerts.deliver(context, fresh)
-        return fresh
+        return Read(fresh, "Job boards: ${fresh.size} new" + if (failed.isNotEmpty()) " (couldn't reach ${failed.joinToString(", ")})" else "")
     }
 
     /** Cancel the 6-hourly schedule that 1.8 and earlier left in WorkManager. */

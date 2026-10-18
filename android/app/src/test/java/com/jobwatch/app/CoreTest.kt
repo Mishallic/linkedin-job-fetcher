@@ -123,7 +123,8 @@ class CoreTest {
     fun liveFetchFromLinkedIn() {
         assumeTrue(System.getenv("LIVE_LINKEDIN") == "1")
         val now = System.currentTimeMillis()
-        val jobs = LinkedIn.fetchNewJobs(Search("data analyst", "Saudi Arabia", lastCheck = now - 60 * 60_000), emptySet(), now)
+        val jobs = LinkedIn.fetchPage(Search("data analyst", "Saudi Arabia", lastCheck = now - 60 * 60_000),
+            LinkedIn.windowSeconds(now - 60 * 60_000, now), 0).orEmpty()
         println("live: ${jobs.size} jobs in the last hour, e.g. ${jobs.firstOrNull()}")
         assertEquals(jobs.size, jobs.map { it.id }.toSet().size)
         assertTrue(jobs.all { it.url.startsWith("https://www.linkedin.com/jobs/view/") })

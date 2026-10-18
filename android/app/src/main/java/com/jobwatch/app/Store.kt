@@ -12,14 +12,18 @@ data class AppData(
     val searches: List<Search> = emptyList(),
     val seen: List<String> = emptyList(), // ids of every job already reported
     val jobs: List<Job> = emptyList(),    // newest first
-    val lastRun: Long = 0L,
-    val limited: Boolean = false, // LinkedIn said "slow down" on the last check; the next check tries again
+    val lastRun: Long = 0L, // when the last check started
+    val limited: Boolean = false, // LinkedIn's last answer was "slow down"
     val checksOn: Boolean = true, // false: nothing runs in the background until the user turns it back on
     val remoteOn: Boolean = true, // also check the remote job boards
     val remoteLastCheck: Long = 0L,
     val remoteStatus: String = "",
     val boardChecks: Map<String, Long> = emptyMap(), // board name -> when it was last read
     val rounds: List<Round> = emptyList(), // the last checks, newest first
+    val lastLinkedInAt: Long = 0L, // the app's last request to LinkedIn; the next one is 2 minutes later at the soonest
+    val linkedInPausedUntil: Long = 0L, // after a "slow down", background checks leave LinkedIn alone until then
+    val alertQueue: List<String> = emptyList(), // ids of new jobs waiting for the next alert
+    val lastAlertAt: Long = 0L,
 )
 
 /**
@@ -36,7 +40,10 @@ data class Round(val startedAt: Long, val trigger: String, val finishedAt: Long 
 object Store {
     private const val KEEP_JOBS = 300
     private const val KEEP_SEEN = 5000
-    const val KEEP_ROUNDS = 40
+    const val KEEP_ROUNDS = 100
+
+    /** LinkedIn gets one search every 2 minutes, so 5 searches are each checked every 10 minutes. */
+    const val MAX_SEARCHES = 5
 
     // The searches you were using in the desktop app. Only used the very first time.
     private val STARTING_SEARCHES = listOf(
@@ -99,15 +106,14 @@ object Store {
         d.copy(jobs = jobs)
     }
 
-    /** Record that a round started. Returns its start time, which [finishRound] takes to find it again. */
-    fun beginRound(context: Context, trigger: String): Long {
-        val now = System.currentTimeMillis()
-        update(context) { d -> d.copy(rounds = (listOf(Round(now, trigger)) + d.rounds).take(KEEP_ROUNDS)) }
-        return now
-    }
-
-    fun finishRound(context: Context, startedAt: Long, result: String) = update(context) { d ->
-        d.copy(rounds = d.rounds.map { if (it.startedAt == startedAt) it.copy(finishedAt = System.currentTimeMillis(), result = result) else it })
+    /** Add [search] unless it's already in the list or there are [MAX_SEARCHES] already. Returns whether it was added. */
+    fun addSearch(context: Context, search: Search): Boolean {
+        var added = false
+        update(context) { d ->
+            if (d.searches.size >= MAX_SEARCHES || d.searches.any { it.label == search.label }) d
+            else d.copy(searches = d.searches + search).also { added = true }
+        }
+        return added
     }
 
     private fun write(context: Context, data: AppData) {
@@ -116,6 +122,7 @@ object Store {
             jobs = data.jobs.distinctBy { it.id }.take(KEEP_JOBS),
             seen = data.seen.distinct().takeLast(KEEP_SEEN),
             rounds = data.rounds.take(KEEP_ROUNDS),
+            alertQueue = data.alertQueue.distinct().take(KEEP_JOBS),
         )
         // Write a temp file, then swap it in, so a crash mid-write can't leave a half-written file.
         val tmp = File(context.filesDir, "jobs.json.tmp")
@@ -127,7 +134,8 @@ object Store {
     private fun toJson(data: AppData) = JSONObject()
         .put("searches", JSONArray(data.searches.map {
             JSONObject().put("keywords", it.keywords).put("location", it.location).put("lastCheck", it.lastCheck)
-                .put("found", it.found).put("status", it.status)
+                .put("found", it.found).put("status", it.status).put("lastTry", it.lastTry).put("cursor", it.cursor)
+                .put("checkStartedAt", it.checkStartedAt).put("checkNew", it.checkNew).put("lastPageIds", JSONArray(it.lastPageIds))
         }))
         .put("seen", JSONArray(data.seen))
         .put("jobs", JSONArray(data.jobs.map {
@@ -145,6 +153,10 @@ object Store {
         .put("rounds", JSONArray(data.rounds.map {
             JSONObject().put("startedAt", it.startedAt).put("trigger", it.trigger).put("finishedAt", it.finishedAt).put("result", it.result)
         }))
+        .put("lastLinkedInAt", data.lastLinkedInAt)
+        .put("linkedInPausedUntil", data.linkedInPausedUntil)
+        .put("alertQueue", JSONArray(data.alertQueue))
+        .put("lastAlertAt", data.lastAlertAt)
 
     private fun fromJson(json: JSONObject): AppData {
         val searches = json.optJSONArray("searches") ?: JSONArray()
@@ -156,7 +168,9 @@ object Store {
             searches = List(searches.length()) { i ->
                 val o = searches.getJSONObject(i)
                 Search(o.getString("keywords"), o.optString("location"), o.optLong("lastCheck", System.currentTimeMillis()),
-                    o.optInt("found"), o.optString("status", "Not checked yet"))
+                    o.optInt("found"), o.optString("status", "Not checked yet"), lastTry = o.optLong("lastTry"),
+                    cursor = o.optInt("cursor"), checkStartedAt = o.optLong("checkStartedAt"), checkNew = o.optInt("checkNew"),
+                    lastPageIds = o.optJSONArray("lastPageIds").strings())
             },
             seen = List(seen.length()) { i -> seen.getString(i) },
             jobs = List(jobs.length()) { i ->
@@ -176,6 +190,12 @@ object Store {
                 val o = rounds.getJSONObject(i)
                 Round(o.getLong("startedAt"), o.optString("trigger"), o.optLong("finishedAt"), o.optString("result"))
             },
+            lastLinkedInAt = json.optLong("lastLinkedInAt"),
+            linkedInPausedUntil = json.optLong("linkedInPausedUntil"),
+            alertQueue = json.optJSONArray("alertQueue").strings(),
+            lastAlertAt = json.optLong("lastAlertAt"),
         )
     }
+
+    private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else List(length()) { optString(it) }
 }

@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
@@ -49,7 +50,6 @@ class UiTest {
         init {
             val sample = UiTest::class.java.getResource("/sample_page.html")!!.readText()
             Http.fake = { url -> requested += url; 200 to (if ("start=0" in url) sample else "") }
-            Checker.pauseBetweenSearchesMs = 0L..0L
         }
     }
 
@@ -63,32 +63,58 @@ class UiTest {
         File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    /** The check that opening the app starts (no alarm was set yet) has finished: the fake page's 10 jobs are in. */
+    private fun firstCheckDone() = compose.waitUntil(15_000) { Store.load(compose.activity).jobs.size >= 10 }
+
+    /** Tap refresh once it's there (it's a spinner while a check runs), and wait for that check to finish. */
+    private fun refresh() {
+        val activity = compose.activity
+        compose.waitUntil(15_000) { compose.onAllNodesWithContentDescription("Check now").fetchSemanticsNodes().isNotEmpty() }
+        val before = Store.load(activity).rounds.size
+        compose.onNodeWithContentDescription("Check now").performClick()
+        compose.waitUntil(15_000) { Store.load(activity).rounds.let { it.size > before && it[0].finishedAt > 0 } }
+    }
+
     @Test
-    fun mainScreenStartsWithYourSearchesAndAddsOne() {
+    fun fiveSearchesAtMostAndANewOneGoesNext() {
+        val activity = compose.activity
         compose.onNodeWithText("Job Watch").assertIsDisplayed()
         compose.onNodeWithText("Amman, Jordan", substring = true).assertIsDisplayed()
         screenshot("1-main")
+        firstCheckDone()
 
+        // Five searches is the most: instead of the form, a note says so.
         val list = compose.onNode(hasScrollToIndexAction()) // the main list (the filter chips scroll too)
+        list.performScrollToNode(hasText("Remove one to add another", substring = true))
+        screenshot("2a-five-searches")
+
+        // Remove one, and the form is back.
+        val remove = hasContentDescription("Stop watching data analyst @ Saudi Arabia")
+        list.performScrollToNode(remove)
+        compose.onNode(remove).performClick()
+        compose.onNodeWithText("Remove").performClick()
+        compose.waitForIdle()
+        // As if every search had had its turn, so the new one is the longest waiting.
+        Store.update(activity) { d -> d.copy(searches = d.searches.map { it.copy(lastTry = System.currentTimeMillis()) }) }
         list.performScrollToNode(hasText("Add search"))
         compose.onNode(hasSetTextAction() and hasText("Position")).performTextInput("python developer")
         compose.onNode(hasSetTextAction() and hasText("Location")).performTextInput("Dubai")
         screenshot("2-adding")
         compose.onNodeWithText("Add search").performClick()
         compose.waitForIdle()
-
-        val saved = Store.load(compose.activity).searches.map { it.label }
-        assertTrue("search saved: $saved", "python developer @ Dubai" in saved)
+        assertTrue("search saved", Store.load(activity).searches.any { it.label == "python developer @ Dubai" })
         list.performScrollToNode(hasText("python developer"))
         compose.onNodeWithText("python developer").assertIsDisplayed()
 
-        // The new search is checked right away (real LinkedIn request); wait for its result.
-        compose.waitUntil(30_000) {
-            Store.load(compose.activity).searches.first { it.keywords == "python developer" }.status != "Not checked yet"
-        }
-        val status = Store.load(compose.activity).searches.first { it.keywords == "python developer" }.status
-        println("python developer @ Dubai -> $status")
-        assertTrue(status, status.startsWith("Checked") || status.startsWith("Error"))
+        // LinkedIn was asked moments ago, so the new search waits for the 2-minute mark, and the app says when.
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Next one at", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        fun status() = Store.load(activity).searches.first { it.keywords == "python developer" }.status
+        assertEquals("Not checked yet", status())
+
+        // At the 2-minute mark (what the alarm runs), it's first in line.
+        minutesPass(activity, 2)
+        Checker.tick(activity)
+        assertTrue(status(), status().startsWith("Checked") || status().startsWith("Checking"))
         list.performScrollToNode(hasText("JOBS", substring = true))
         screenshot("2b-after-check")
     }
@@ -107,8 +133,7 @@ class UiTest {
     @Test
     fun newDotStaysUntilThatJobIsOpened() {
         val activity = compose.activity
-        // A check (it waits for any still running) finds the fake LinkedIn page's 10 jobs, all new.
-        Checker.run(activity, force = true)
+        firstCheckDone() // it found the fake LinkedIn page's 10 jobs, all new
         compose.waitForIdle()
         assertEquals(10, Store.load(activity).jobs.size)
         assertTrue(Store.load(activity).jobs.all { it.isNew })
@@ -148,7 +173,7 @@ class UiTest {
         compose.waitUntil(15_000) { (Store.load(activity).rounds.firstOrNull()?.finishedAt ?: 0L) > 0L }
         compose.onNodeWithText("Recent checks").performClick()
         compose.onNodeWithText(Checker.TRIGGER_OPENED, substring = true).assertIsDisplayed()
-        compose.onNodeWithText("10 new on LinkedIn", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("software engineer @ Amman, Jordan: 10 new", substring = true).assertIsDisplayed()
         screenshot("13-history", ShadowDialog.getLatestDialog().window!!.decorView)
     }
 
@@ -167,7 +192,7 @@ class UiTest {
     @Test
     fun jobsCanBeMarkedReadOrNewOneByOneOrTogether() {
         val activity = compose.activity
-        Checker.run(activity, force = true) // the fake LinkedIn page's 10 jobs, all new
+        firstCheckDone() // the fake LinkedIn page's 10 jobs, all new
         compose.waitForIdle()
         fun newCount() = Store.load(activity).jobs.count { it.isNew }
         assertEquals(10, newCount())
@@ -212,7 +237,7 @@ class UiTest {
     @Test
     fun selectedJobsCanBeDeletedAndTheDeleteUndone() {
         val activity = compose.activity
-        Checker.run(activity, force = true) // the fake LinkedIn page's 10 jobs
+        firstCheckDone() // the fake LinkedIn page's 10 jobs
         compose.waitForIdle()
         val jobs = Store.load(activity).jobs
         val (first, second) = jobs.filter { j -> jobs.count { it.title == j.title } == 1 }.take(2)
@@ -252,7 +277,7 @@ class UiTest {
     @Test
     fun comingBackToTheAppDoesNotCheckAgain() {
         val activity = compose.activity
-        compose.waitUntil(15_000) { Store.load(activity).lastRun != 0L } // the first open's check is done
+        firstCheckDone()
         assertTrue("that check set the 10-minute alarm", Scheduler.isScheduled(activity))
         fun linkedInRequests() = requested.count { "linkedin.com" in it }
         val before = linkedInRequests()
@@ -266,23 +291,31 @@ class UiTest {
     }
 
     @Test
-    fun slowDownIsExplainedAndRefreshStillWorks() {
+    fun slowDownIsExplainedAndRefreshKeepsTwoMinutesBetweenRequests() {
         val activity = compose.activity
+        firstCheckDone()
         val normal = Http.fake
+        fun linkedInRequests() = requested.count { "linkedin.com" in it }
 
-        // LinkedIn refuses: the card says so, and when it will try again.
+        // Right after the first check, a tap doesn't ask LinkedIn again; it says when the next search goes.
+        val before = linkedInRequests()
+        refresh()
+        assertEquals(before, linkedInRequests())
+        compose.waitUntil(5_000) { compose.onAllNodesWithText("Next one at", substring = true).fetchSemanticsNodes().isNotEmpty() }
+
+        // Two minutes on, LinkedIn refuses: the card says so, and when it will try again.
+        minutesPass(activity, 2)
         Http.fake = { url -> requested += url; 429 to "" }
-        compose.onNodeWithContentDescription("Check now").performClick()
-        compose.waitUntil(15_000) { Store.load(activity).limited }
+        refresh()
+        assertTrue(Store.load(activity).limited)
         compose.onNode(isToggleable() and hasText("LinkedIn asked to slow down", substring = true)).assertIsDisplayed()
         screenshot("5-slowed-down")
 
-        // No waiting period: refresh goes straight to LinkedIn, and once it answers, all is normal.
+        // Two minutes later a tap tries again without waiting out the pause, and once LinkedIn answers, all is normal.
         Http.fake = normal
-        // While a check runs, the refresh button shows a spinner; wait for it to come back.
-        compose.waitUntil(15_000) { compose.onAllNodesWithContentDescription("Check now").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithContentDescription("Check now").performClick()
-        compose.waitUntil(15_000) { !Store.load(activity).limited }
+        minutesPass(activity, 2)
+        refresh()
+        assertFalse(Store.load(activity).limited)
         compose.onNodeWithText("Last check", substring = true).assertIsDisplayed()
     }
 

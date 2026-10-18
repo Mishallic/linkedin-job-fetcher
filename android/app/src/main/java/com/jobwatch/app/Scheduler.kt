@@ -10,34 +10,46 @@ import android.os.PowerManager
 import kotlin.concurrent.thread
 
 /**
- * Wakes the app every 10 minutes with an alarm, for a round of LinkedIn and the remote job
- * boards ([Checker.round]). Alarms (unlike scheduled jobs) still
- * fire when the phone is idle, and an app exempt from battery optimization may use the
- * network then, so checks keep their rhythm while the phone sits in a pocket.
+ * Wakes the app with an alarm for each check ([Checker.tick]): at the next search's turn, and at
+ * most every [SPACING_MINUTES] minutes, so LinkedIn gets one request per 2 minutes and each of up to
+ * 5 searches is checked every [INTERVAL_MINUTES] minutes. Alarms (unlike scheduled jobs) still fire
+ * when the phone is idle, and an app exempt from battery optimization may use the network then, so
+ * checks keep their rhythm while the phone sits in a pocket.
  *
  * When the user turns background checks off, the alarm is cancelled and nothing here
  * schedules a new one, so the app doesn't run at all until it's opened again.
  */
 object Scheduler {
+    /** Each search is checked this often, and so are the job boards without a stricter limit. */
     const val INTERVAL_MINUTES = 10L
+
+    /** LinkedIn gets at most one request per this many minutes, and the app wakes no more often. */
+    const val SPACING_MINUTES = 2L
 
     private fun prefs(context: Context) = context.getSharedPreferences("scheduler", Context.MODE_PRIVATE)
 
     private fun alarmIntent(context: Context) = PendingIntent.getBroadcast(context, 0,
         Intent(context, CheckReceiver::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
-    /** Set the next alarm, unless background checks are off (then make sure none is left). */
-    fun scheduleNext(context: Context, delayMs: Long = INTERVAL_MINUTES * 60_000) {
+    /** Set the alarm for [at], unless background checks are off (then make sure none is left). */
+    fun scheduleAt(context: Context, at: Long) {
         if (!Store.load(context).checksOn) {
             stop(context)
             return
         }
         val alarms = context.getSystemService(AlarmManager::class.java)
-        val at = System.currentTimeMillis() + delayMs
         if (canExact(context)) alarms.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, alarmIntent(context))
         else alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, alarmIntent(context))
         prefs(context).edit().putLong("nextAt", at).apply()
     }
+
+    /** Set the alarm [delayMs] from now. */
+    fun scheduleNext(context: Context, delayMs: Long = SPACING_MINUTES * 60_000) =
+        scheduleAt(context, System.currentTimeMillis() + delayMs)
+
+    /** Set the alarm for the next check that's due ([Checker.nextTickAt]). */
+    fun reschedule(context: Context) =
+        scheduleAt(context, Checker.nextTickAt(context, Store.load(context), System.currentTimeMillis()))
 
     fun stop(context: Context) {
         context.getSystemService(AlarmManager::class.java).cancel(alarmIntent(context))
@@ -71,11 +83,11 @@ class CheckReceiver : BroadcastReceiver() {
             Scheduler.stop(app)
             return
         }
-        Scheduler.scheduleNext(app) // keep the 10-minute chain going whatever happens below
+        Scheduler.scheduleNext(app) // keep the chain going whatever happens below; the check then sets the exact time
         val pending = goAsync()
         thread {
             try {
-                Checker.round(app, trigger = Checker.TRIGGER_ALARM)
+                Checker.tick(app, Checker.TRIGGER_ALARM)
             } finally {
                 pending.finish()
             }

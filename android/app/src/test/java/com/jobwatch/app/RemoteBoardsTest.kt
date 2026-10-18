@@ -114,7 +114,7 @@ class RemoteBoardsTest {
             }
         }
 
-        val found = RemoteBoards.check(context) // the starting searches: software engineer, data analyst
+        val found = RemoteBoards.check(context).jobs // the starting searches: software engineer, data analyst
         // Globex is US-only, Hooli isn't one of your positions, and Initech's job is on two boards.
         assertEquals(setOf("Senior Software Engineer @ Initech via Remotive", "Data Analyst @ Umbrella via We Work Remotely"),
             found.map { "${it.title} @ ${it.company} via ${it.source}" }.toSet())
@@ -127,7 +127,7 @@ class RemoteBoardsTest {
         assertTrue(data.remoteLastCheck > 0)
 
         minutesPass(6 * 60) // every board is due again
-        assertEquals("the same listings aren't announced twice", emptyList<Job>(), RemoteBoards.check(context))
+        assertEquals("the same listings aren't announced twice", emptyList<Job>(), RemoteBoards.check(context).jobs)
         assertEquals(2, requests.count { "remotive.com" in it })
     }
 
@@ -162,9 +162,9 @@ class RemoteBoardsTest {
     fun turnedOffSendsNoRequests() {
         Store.update(context) { it.copy(remoteOn = false) }
         Http.fake = { url -> fail("no request while remote boards are off: $url"); 200 to "" }
-        assertEquals(emptyList<Job>(), RemoteBoards.check(context))
+        assertEquals(emptyList<Job>(), RemoteBoards.check(context).jobs)
 
         Store.update(context) { it.copy(remoteOn = true, checksOn = false) }
-        assertEquals("nor while background checks are off", emptyList<Job>(), RemoteBoards.check(context))
+        assertEquals("nor while background checks are off", emptyList<Job>(), RemoteBoards.check(context).jobs)
     }
 }

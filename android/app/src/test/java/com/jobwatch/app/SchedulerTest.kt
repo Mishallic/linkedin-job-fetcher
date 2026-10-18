@@ -38,7 +38,6 @@ class SchedulerTest {
     @After
     fun tearDown() {
         Http.fake = null
-        Checker.pauseBetweenSearchesMs = 2_000L..4_000L
     }
 
     @Test
@@ -58,16 +57,14 @@ class SchedulerTest {
         Scheduler.scheduleNext(context)
         BootReceiver().onReceive(context, Intent(Intent.ACTION_BOOT_COMPLETED))
         CheckReceiver().onReceive(context, Intent())
-        assertNull(Checker.run(context))
+        assertEquals("Background checks are off.", Checker.tick(context).message)
         assertNull(alarms.peekNextScheduledAlarm())
         assertEquals("no LinkedIn requests while off", 0, requests.size)
 
         // Checks you ask for yourself still run once.
-        Checker.pauseBetweenSearchesMs = 0L..0L
-        assertNotNull(Checker.run(context, force = true))
+        Checker.tick(context, Checker.TRIGGER_REFRESH, force = true)
         assertTrue(requests.isNotEmpty())
         assertNull("...without starting the background chain", alarms.peekNextScheduledAlarm())
-        Checker.pauseBetweenSearchesMs = 2_000L..4_000L
 
         // Turning it back on starts the chain again, including after a restart.
         Store.update(context) { it.copy(checksOn = true) }
@@ -101,24 +98,39 @@ class SchedulerTest {
     }
 
     @Test
-    fun eachRoundReadsTheRemoteBoardsUnlessEitherSwitchIsOff() {
+    fun eachCheckReadsTheBoardsThatAreDueUnlessEitherSwitchIsOff() {
         Http.fake = { url -> requests += url; 200 to "" }
-        Checker.pauseBetweenSearchesMs = 0L..0L
         fun boardRequests() = requests.count { "linkedin.com" !in it }
 
         Store.update(context) { it.copy(checksOn = false) }
-        assertNull(Checker.round(context))
+        Checker.tick(context)
         assertEquals("background checks off: the boards aren't read either", 0, boardRequests())
 
         Store.update(context) { it.copy(checksOn = true, remoteOn = false) }
-        Checker.round(context)
+        Checker.tick(context)
         assertTrue("LinkedIn is checked", requests.isNotEmpty())
         assertEquals("the boards are off", 0, boardRequests())
 
         Store.update(context) { it.copy(remoteOn = true) }
-        Checker.round(context) // what the 10-minute alarm runs
+        Checker.tick(context) // what the alarm runs
         val boardsRead = requests.map { URI(it).host }.filter { "linkedin" !in it }.toSet()
-        assertEquals("both on: the round reads every board that's due", RemoteBoards.boards.size, boardsRead.size)
+        assertEquals("both on: the check reads every board that's due", RemoteBoards.boards.size, boardsRead.size)
+    }
+
+    @Test
+    fun theAlarmIsSetForTheNextSearchsTurn() {
+        Http.fake = { url -> requests += url; 200 to "" }
+        Store.update(context) { it.copy(remoteOn = false) }
+        Checker.tick(context)
+        var data = Store.load(context)
+        assertEquals("5 searches: the next one goes 2 minutes later", data.lastRun + 2 * 60_000,
+            alarms.peekNextScheduledAlarm()!!.triggerAtTime)
+
+        Store.update(context) { d -> d.copy(searches = d.searches.take(1)) }
+        Scheduler.reschedule(context)
+        data = Store.load(context)
+        assertEquals("one search: its next turn is 10 minutes after it was asked", data.searches[0].lastTry + 10 * 60_000,
+            alarms.peekNextScheduledAlarm()!!.triggerAtTime)
     }
 
     @Test

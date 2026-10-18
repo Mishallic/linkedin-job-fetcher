@@ -29,6 +29,16 @@ data class Search(
     val lastCheck: Long = System.currentTimeMillis(),
     val found: Int = 0,
     val status: String = "Not checked yet",
+    /** When LinkedIn was last asked for this search (any page, any answer). Its next turn is 10 minutes later. */
+    val lastTry: Long = 0L,
+    /** A check reading several pages of results: where its next page starts. 0 when none is under way. */
+    val cursor: Int = 0,
+    /** When the check under way began. Its window ends there, so the next check starts from it. */
+    val checkStartedAt: Long = 0L,
+    /** New jobs the check under way has found so far. */
+    val checkNew: Int = 0,
+    /** The job ids on the page read last, to notice LinkedIn repeating a page instead of ending. */
+    val lastPageIds: List<String> = emptyList(),
 ) {
     /** Where the search looks, as shown to the user. */
     val place: String get() = location.ifBlank { "Anywhere" }
@@ -51,8 +61,8 @@ object LinkedIn {
     const val MIN_WINDOW_MINUTES = 15L
     const val OVERLAP_MINUTES = 5L
     const val MAX_WINDOW_HOURS = 24L
-    private const val MAX_PAGES = 40 // safety stop only
-    private const val PAGE_SIZE = 10 // LinkedIn returns 10 jobs per page; a shorter page is the last one
+    const val MAX_PAGES = 40 // safety stop only
+    const val PAGE_SIZE = 10 // LinkedIn returns 10 jobs per page; a shorter page is the last one
 
     private val CARD_START = "data-entity-urn=\"urn:li:jobPosting:"
     private val ID = Regex("^\\d+")
@@ -79,25 +89,6 @@ object LinkedIn {
         return sinceLast.coerceIn(MIN_WINDOW_MINUTES * 60, MAX_WINDOW_HOURS * 3600)
     }
 
-    /** Every job in the search's window, across all pages, whose id isn't in [seen]. */
-    fun fetchNewJobs(search: Search, seen: Set<String>, now: Long): List<Job> {
-        val seconds = windowSeconds(search.lastCheck, now)
-        val read = HashSet<String>()
-        val fresh = mutableListOf<Job>()
-        var start = 0
-        for (page in 0 until MAX_PAGES) {
-            if (page > 0) Thread.sleep(1200) // be polite between pages
-            val jobs = parse(fetchPage(search, seconds, start))
-            val unread = jobs.filter { it.id !in read }
-            if (unread.isEmpty()) break // past the last page (or LinkedIn repeated one)
-            unread.forEach { read += it.id }
-            fresh += unread.filter { it.id !in seen }
-            if (jobs.size < PAGE_SIZE) break // last page: no need to ask LinkedIn for an empty one
-            start += jobs.size
-        }
-        return fresh
-    }
-
     /** The search URL for one results page. */
     fun pageUrl(search: Search, seconds: Long, start: Int): String {
         val params = listOf(
@@ -110,11 +101,16 @@ object LinkedIn {
         return "$SEARCH_URL?" + params.joinToString("&") { (key, value) -> "$key=${URLEncoder.encode(value, "UTF-8")}" }
     }
 
-    private fun fetchPage(search: Search, seconds: Long, start: Int): String {
+    /**
+     * One page of the search's results, newest first, starting at [start]: its jobs, or null when
+     * LinkedIn says there are no more. [seconds] is how far back to look (see [windowSeconds]). One
+     * request; the checks space them out ([Checker]).
+     */
+    fun fetchPage(search: Search, seconds: Long, start: Int): List<Job>? {
         val (status, body) = Http.get(pageUrl(search, seconds, start), mapOf("User-Agent" to USER_AGENT, "Accept-Language" to "en-US,en;q=0.9"))
         return when {
-            status == 200 -> body
-            status == 400 && start > 0 -> "" // LinkedIn's answer past the last page
+            status == 200 -> parse(body)
+            status == 400 && start > 0 -> null // LinkedIn's answer past the last page
             status == 429 || status == 999 -> throw SlowDownException()
             else -> throw IllegalStateException("LinkedIn returned HTTP $status")
         }

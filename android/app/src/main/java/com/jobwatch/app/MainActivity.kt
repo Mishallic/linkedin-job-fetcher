@@ -124,12 +124,12 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         resumes.value = resumes.value + 1 // re-read permissions the user may have just changed
-        // Opening the app is no reason to check LinkedIn: the 10-minute alarm does that. Only when
+        // Opening the app is no reason to check LinkedIn: the alarm does that. Only when
         // the chain broke (the phone forgot the alarm, or its time came and it never fired) start
         // it again and catch up now. Nothing happens while background checks are turned off.
         if (Store.load(this).checksOn && !Scheduler.isScheduled(this)) {
             Scheduler.scheduleNext(this)
-            thread { Checker.round(applicationContext, trigger = Checker.TRIGGER_OPENED) }
+            thread { Checker.tick(applicationContext, Checker.TRIGGER_OPENED) }
         }
     }
 
@@ -179,21 +179,19 @@ fun App() {
         }
     }
 
-    /** A check the user asked for: one new search, or (null) a full round. */
-    fun runCheck(labels: Set<String>?, trigger: String = Checker.TRIGGER_REFRESH) {
+    /**
+     * A check you asked for: LinkedIn's next search (or [prefer], a search just added) if two minutes
+     * have passed since its last one, and the job boards that are due. The snackbar says what it found.
+     */
+    fun runCheck(prefer: String?, trigger: String = Checker.TRIGGER_REFRESH) {
         if (busy) return
         busy = true
         scope.launch {
-            val jobs = withContext(Dispatchers.IO) {
-                if (labels == null) Checker.round(context.applicationContext, force = true, trigger = trigger)
-                else Checker.run(context.applicationContext, labels, force = true)
+            val result = withContext(Dispatchers.IO) {
+                Checker.tick(context.applicationContext, trigger, force = true, prefer = prefer)
             }
             busy = false
-            snackbar.showSnackbar(when {
-                Store.load(context).limited -> "LinkedIn asked to slow down. Try again in a few minutes."
-                jobs.isNullOrEmpty() -> "No new jobs"
-                else -> Messages.headline(jobs)
-            })
+            snackbar.showSnackbar(result.message)
         }
     }
 
@@ -245,7 +243,7 @@ fun App() {
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        MainList(data, resumed, padding, onSearchAdded = { label -> runCheck(setOf(label)) },
+        MainList(data, resumed, padding, onSearchAdded = { label -> runCheck(label, Checker.TRIGGER_ADDED) },
             onChecksChanged = setChecks, onDelete = ::deleteJobs)
     }
     if (showAbout) AboutDialog(data, onClose = { showAbout = false })
@@ -267,9 +265,9 @@ fun AboutDialog(data: AppData, onClose: () -> Unit) {
                 if (app.lastUpdateTime > 0) {
                     Text("Installed ${timeText(app.lastUpdateTime)}", style = MaterialTheme.typography.bodySmall, color = muted)
                 }
-                Text("Checks your LinkedIn job searches every ${Scheduler.INTERVAL_MINUTES} minutes, and remote job " +
-                    "boards as often as each one allows, and tells you about new and reposted jobs. " +
-                    "It runs entirely on this phone.",
+                Text("Checks each of your LinkedIn searches every ${Scheduler.INTERVAL_MINUTES} minutes, one search every " +
+                    "${Scheduler.SPACING_MINUTES} minutes so LinkedIn isn't asked too often, and remote job boards as often " +
+                    "as each one allows, and tells you about new and reposted jobs. It runs entirely on this phone.",
                     style = MaterialTheme.typography.bodyMedium)
                 Text("${data.searches.size} searches · ${data.seen.size} jobs found so far",
                     style = MaterialTheme.typography.bodySmall, color = muted)
@@ -318,7 +316,10 @@ fun MainList(
             item(key = "remote") {
                 RemoteBoardsCard(data, onChange = { on ->
                     Store.update(context) { it.copy(remoteOn = on) }
-                    if (on) thread { RemoteBoards.check(context.applicationContext) } // don't wait for the next round
+                    if (on) thread { // don't wait for the next check
+                        val app = context.applicationContext
+                        Checker.announce(app, RemoteBoards.check(app).jobs, immediate = true)
+                    }
                 })
             }
 
@@ -401,11 +402,11 @@ fun ChecksCard(data: AppData, onChange: (Boolean) -> Unit) {
     var showHistory by rememberSaveable { mutableStateOf(false) }
     val now = System.currentTimeMillis()
     val next = remember(data) { Scheduler.nextCheckAt(context) }
-    val nextText = if (next > now) "next check about ${timeText(next)}" else "next check"
+    val retry = Checker.linkedInReadyAt(data, now).let { if (it > now) it else next }
     val limited = data.checksOn && data.limited
     val detail = when {
         !data.checksOn -> "Off: nothing runs in the background. Tap the refresh button at the top to check once."
-        limited -> "LinkedIn asked to slow down. Trying again at the $nextText; jobs posted meanwhile won't be missed."
+        limited -> "LinkedIn asked to slow down. Trying it again at about ${timeText(retry)}; jobs posted meanwhile won't be missed."
         else -> "Last check ${timeText(data.lastRun)}" + if (next > now) " · next about ${timeText(next)}" else ""
     }
     Card(Modifier.fillMaxWidth()) {
@@ -560,6 +561,7 @@ fun SearchRow(search: Search, onRemove: () -> Unit) {
     }
 }
 
+/** The form for a new search, or, with [Store.MAX_SEARCHES] searches already, a note on why there's no room. */
 @Composable
 fun AddSearch(data: AppData, onAdded: (String) -> Unit) {
     val context = LocalContext.current
@@ -569,25 +571,30 @@ fun AddSearch(data: AppData, onAdded: (String) -> Unit) {
 
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(keywords, { keywords = it; error = null }, Modifier.fillMaxWidth(),
-                label = { Text("Position") }, placeholder = { Text("e.g. Software engineer") }, singleLine = true)
-            OutlinedTextField(location, { location = it; error = null }, Modifier.fillMaxWidth(),
-                label = { Text("Location") }, placeholder = { Text("e.g. Amman, Jordan") }, singleLine = true,
-                isError = error != null, supportingText = { Text(error ?: "\"City, Country\" works best") })
-            Button(onClick = {
-                val search = Search(keywords.trim(), location.trim())
-                error = when {
-                    search.keywords.isEmpty() -> "Enter a position to search for."
-                    data.searches.any { it.label == search.label } -> "That search is already in the list."
-                    else -> null
-                }
-                if (error == null) {
-                    Store.update(context) { it.copy(searches = it.searches + search) }
-                    keywords = ""
-                    location = ""
-                    onAdded(search.label)
-                }
-            }, modifier = Modifier.fillMaxWidth()) { Text("Add search") }
+            if (data.searches.size >= Store.MAX_SEARCHES) {
+                Text("${Store.MAX_SEARCHES} searches is the most: LinkedIn gets one search every ${Scheduler.SPACING_MINUTES} " +
+                    "minutes, so each is checked every ${Scheduler.INTERVAL_MINUTES}. Remove one to add another.",
+                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                OutlinedTextField(keywords, { keywords = it; error = null }, Modifier.fillMaxWidth(),
+                    label = { Text("Position") }, placeholder = { Text("e.g. Software engineer") }, singleLine = true)
+                OutlinedTextField(location, { location = it; error = null }, Modifier.fillMaxWidth(),
+                    label = { Text("Location") }, placeholder = { Text("e.g. Amman, Jordan") }, singleLine = true,
+                    isError = error != null, supportingText = { Text(error ?: "\"City, Country\" works best") })
+                Button(onClick = {
+                    val search = Search(keywords.trim(), location.trim())
+                    error = when {
+                        search.keywords.isEmpty() -> "Enter a position to search for."
+                        data.searches.any { it.label == search.label } -> "That search is already in the list."
+                        else -> null
+                    }
+                    if (error == null && Store.addSearch(context, search)) {
+                        keywords = ""
+                        location = ""
+                        onAdded(search.label)
+                    }
+                }, modifier = Modifier.fillMaxWidth()) { Text("Add search") }
+            }
         }
     }
 }
