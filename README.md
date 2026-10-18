@@ -23,7 +23,10 @@ are never repeated.
 On first launch, allow notifications and tap **Allow** on the "Finish setting up" card so
 Android doesn't pause the checks. The **Check every 10 minutes** switch turns background
 checks off and on. Opening the app doesn't check again; the next check comes on the
-10-minute schedule, and the refresh button at the top checks at once.
+10-minute schedule, and the refresh button at the top checks at once. **Recent checks**, under
+the switch, lists the last 40 checks: when each started, what started it (the 10-minute alarm,
+the refresh button, opening the app), how long it took and what it found. A check the phone
+stopped before it finished shows as such.
 
 **New, read and deleted:** a filled dot marks a new job, an empty circle a read one. Tap the
 dot to switch it, or open the job to mark it read. Long-press a job to select several, then

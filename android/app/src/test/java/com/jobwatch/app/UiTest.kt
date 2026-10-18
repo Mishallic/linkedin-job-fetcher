@@ -136,7 +136,7 @@ class UiTest {
     @Test
     fun aboutShowsTheVersion() {
         compose.onNodeWithContentDescription("About Job Watch").performClick()
-        compose.onNodeWithText("Version 1.10 (build 11)").assertIsDisplayed()
+        compose.onNodeWithText("Version 1.11 (build 12)").assertIsDisplayed()
         compose.onNodeWithText("jobs found so far", substring = true).assertIsDisplayed()
         screenshot("7-about", ShadowDialog.getLatestDialog().window!!.decorView)
     }
