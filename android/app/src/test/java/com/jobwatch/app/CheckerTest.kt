@@ -12,6 +12,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import java.util.Collections
 
 /** The check routine against a fake LinkedIn, including what happens when LinkedIn says "slow down". */
 @RunWith(AndroidJUnit4::class)
@@ -19,7 +20,7 @@ import org.robolectric.annotation.Config
 class CheckerTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val sample = javaClass.getResource("/sample_page.html")!!.readText()
-    private val requests = mutableListOf<String>()
+    private val requests: MutableList<String> = Collections.synchronizedList(mutableListOf()) // a round reads side by side
 
     @Before
     fun setUp() {
@@ -103,6 +104,30 @@ class CheckerTest {
         Store.deleteJobs(context, doomed)
         assertEquals("a later check doesn't bring them back", emptyList<Job>(), Checker.run(context, force = true))
         assertEquals(before - doomed, Store.load(context).jobs.map { it.id })
+    }
+
+    @Test
+    fun everyRoundIsRecordedWithWhatStartedItAndHowItEnded() {
+        linkedInAnswers(200)
+        Checker.round(context, force = true, trigger = Checker.TRIGGER_REFRESH)
+        var rounds = Store.load(context).rounds
+        assertEquals(1, rounds.size)
+        assertEquals(Checker.TRIGGER_REFRESH, rounds[0].trigger)
+        assertTrue("finished", rounds[0].finishedAt >= rounds[0].startedAt)
+        assertEquals("10 new on LinkedIn", rounds[0].result)
+
+        Checker.round(context) // a background round right after is skipped, and the history says so
+        rounds = Store.load(context).rounds
+        assertEquals(2, rounds.size)
+        assertEquals(Checker.TRIGGER_ALARM, rounds[0].trigger)
+        assertTrue(rounds[0].result, rounds[0].result.startsWith("Skipped: the last check was"))
+
+        linkedInAnswers(429)
+        Checker.round(context, force = true)
+        assertEquals("LinkedIn asked to slow down at the first search", Store.load(context).rounds[0].result)
+
+        repeat(45) { Store.beginRound(context, "test") }
+        assertEquals("only the last ${Store.KEEP_ROUNDS} are kept", Store.KEEP_ROUNDS, Store.load(context).rounds.size)
     }
 
     @Test

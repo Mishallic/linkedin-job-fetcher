@@ -129,7 +129,7 @@ class MainActivity : ComponentActivity() {
         // it again and catch up now. Nothing happens while background checks are turned off.
         if (Store.load(this).checksOn && !Scheduler.isScheduled(this)) {
             Scheduler.scheduleNext(this)
-            thread { Checker.round(applicationContext) }
+            thread { Checker.round(applicationContext, trigger = Checker.TRIGGER_OPENED) }
         }
     }
 
@@ -180,12 +180,12 @@ fun App() {
     }
 
     /** A check the user asked for: one new search, or (null) a full round. */
-    fun runCheck(labels: Set<String>?) {
+    fun runCheck(labels: Set<String>?, trigger: String = Checker.TRIGGER_REFRESH) {
         if (busy) return
         busy = true
         scope.launch {
             val jobs = withContext(Dispatchers.IO) {
-                if (labels == null) Checker.round(context.applicationContext, force = true)
+                if (labels == null) Checker.round(context.applicationContext, force = true, trigger = trigger)
                 else Checker.run(context.applicationContext, labels, force = true)
             }
             busy = false
@@ -212,7 +212,7 @@ fun App() {
         Store.update(context) { it.copy(checksOn = on) } // the remote boards follow the same switch
         if (on) {
             Scheduler.scheduleNext(context)
-            runCheck(null)
+            runCheck(null, Checker.TRIGGER_SWITCH)
         } else {
             Scheduler.stop(context)
             scope.launch { snackbar.showSnackbar("Background checks stopped. Nothing runs until you turn them back on.") }
@@ -394,10 +394,11 @@ fun MainList(
     }
 }
 
-/** The on/off switch for background checks, and what they're doing right now. */
+/** The on/off switch for background checks, what they're doing right now, and the history of checks. */
 @Composable
 fun ChecksCard(data: AppData, onChange: (Boolean) -> Unit) {
     val context = LocalContext.current
+    var showHistory by rememberSaveable { mutableStateOf(false) }
     val now = System.currentTimeMillis()
     val next = remember(data) { Scheduler.nextCheckAt(context) }
     val nextText = if (next > now) "next check about ${timeText(next)}" else "next check"
@@ -408,20 +409,65 @@ fun ChecksCard(data: AppData, onChange: (Boolean) -> Unit) {
         else -> "Last check ${timeText(data.lastRun)}" + if (next > now) " · next about ${timeText(next)}" else ""
     }
     Card(Modifier.fillMaxWidth()) {
-        Row(
-            Modifier.fillMaxWidth()
-                .toggleable(value = data.checksOn, onValueChange = onChange, role = Role.Switch)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Text("Check every ${Scheduler.INTERVAL_MINUTES} minutes", style = MaterialTheme.typography.titleSmall)
-                Text(detail, style = MaterialTheme.typography.bodySmall,
-                    color = if (limited) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+        Column {
+            Row(
+                Modifier.fillMaxWidth()
+                    .toggleable(value = data.checksOn, onValueChange = onChange, role = Role.Switch)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text("Check every ${Scheduler.INTERVAL_MINUTES} minutes", style = MaterialTheme.typography.titleSmall)
+                    Text(detail, style = MaterialTheme.typography.bodySmall,
+                        color = if (limited) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = data.checksOn, onCheckedChange = null)
             }
-            Switch(checked = data.checksOn, onCheckedChange = null)
+            TextButton(onClick = { showHistory = true }, modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)) {
+                Text("Recent checks")
+            }
         }
     }
+    if (showHistory) HistoryDialog(data.rounds, onClose = { showHistory = false })
+}
+
+/** The last checks, newest first: when each started, what started it, how long it took and what it found. */
+@Composable
+fun HistoryDialog(rounds: List<Round>, onClose: () -> Unit) {
+    val now = System.currentTimeMillis()
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Recent checks") },
+        text = {
+            if (rounds.isEmpty()) {
+                Text("No checks yet.", style = MaterialTheme.typography.bodyMedium, color = muted)
+            } else {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    items(rounds, key = { it.startedAt }) { round ->
+                        val (line, warn) = when {
+                            round.finishedAt > 0 -> "${round.result} · took ${durationText(round.finishedAt - round.startedAt)}" to false
+                            now - round.startedAt < 3 * 60_000 -> "Running…" to false
+                            else -> "Did not finish: the phone stopped the app during this check" to true
+                        }
+                        Column {
+                            Text("${timeText(round.startedAt)} · ${round.trigger}", style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium)
+                            Text(line, style = MaterialTheme.typography.bodySmall,
+                                color = if (warn) MaterialTheme.colorScheme.error else muted)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("OK") } },
+    )
+}
+
+fun durationText(ms: Long): String = when {
+    ms < 1_000 -> "under a second"
+    ms < 60_000 -> "${ms / 1_000} s"
+    else -> "${ms / 60_000} min ${ms % 60_000 / 1_000} s"
 }
 
 /** On/off switch for the remote job boards, with what they look for and when they were last checked. */

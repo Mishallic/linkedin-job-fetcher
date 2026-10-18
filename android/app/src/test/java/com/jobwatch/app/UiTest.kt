@@ -142,6 +142,17 @@ class UiTest {
     }
 
     @Test
+    fun recentChecksListEachRoundAndWhatItFound() {
+        val activity = compose.activity
+        // The round that opening the app started (no alarm was set yet) has finished.
+        compose.waitUntil(15_000) { (Store.load(activity).rounds.firstOrNull()?.finishedAt ?: 0L) > 0L }
+        compose.onNodeWithText("Recent checks").performClick()
+        compose.onNodeWithText(Checker.TRIGGER_OPENED, substring = true).assertIsDisplayed()
+        compose.onNodeWithText("10 new on LinkedIn", substring = true).assertIsDisplayed()
+        screenshot("13-history", ShadowDialog.getLatestDialog().window!!.decorView)
+    }
+
+    @Test
     fun backgroundChecksCanBeStopped() {
         compose.onNode(isToggleable() and hasText("Check every 10 minutes", substring = true)).performClick()
         compose.onNodeWithText("Off: nothing runs in the background", substring = true).assertIsDisplayed()

@@ -19,7 +19,15 @@ data class AppData(
     val remoteLastCheck: Long = 0L,
     val remoteStatus: String = "",
     val boardChecks: Map<String, Long> = emptyMap(), // board name -> when it was last read
+    val rounds: List<Round> = emptyList(), // the last checks, newest first
 )
+
+/**
+ * One check as the history shows it: when it started, what started it ([Checker.TRIGGER_ALARM] and
+ * the others), and how it ended. [finishedAt] stays 0 while it runs, and for good if the phone
+ * stopped the app before the check could finish.
+ */
+data class Round(val startedAt: Long, val trigger: String, val finishedAt: Long = 0L, val result: String = "")
 
 /**
  * All app state in one JSON file. Every change goes through [update], one at a time,
@@ -28,6 +36,7 @@ data class AppData(
 object Store {
     private const val KEEP_JOBS = 300
     private const val KEEP_SEEN = 5000
+    const val KEEP_ROUNDS = 40
 
     // The searches you were using in the desktop app. Only used the very first time.
     private val STARTING_SEARCHES = listOf(
@@ -90,11 +99,23 @@ object Store {
         d.copy(jobs = jobs)
     }
 
+    /** Record that a round started. Returns its start time, which [finishRound] takes to find it again. */
+    fun beginRound(context: Context, trigger: String): Long {
+        val now = System.currentTimeMillis()
+        update(context) { d -> d.copy(rounds = (listOf(Round(now, trigger)) + d.rounds).take(KEEP_ROUNDS)) }
+        return now
+    }
+
+    fun finishRound(context: Context, startedAt: Long, result: String) = update(context) { d ->
+        d.copy(rounds = d.rounds.map { if (it.startedAt == startedAt) it.copy(finishedAt = System.currentTimeMillis(), result = result) else it })
+    }
+
     private fun write(context: Context, data: AppData) {
         val tidy = data.copy(
             searches = data.searches.distinctBy { it.label },
             jobs = data.jobs.distinctBy { it.id }.take(KEEP_JOBS),
             seen = data.seen.distinct().takeLast(KEEP_SEEN),
+            rounds = data.rounds.take(KEEP_ROUNDS),
         )
         // Write a temp file, then swap it in, so a crash mid-write can't leave a half-written file.
         val tmp = File(context.filesDir, "jobs.json.tmp")
@@ -121,12 +142,16 @@ object Store {
         .put("remoteLastCheck", data.remoteLastCheck)
         .put("remoteStatus", data.remoteStatus)
         .put("boardChecks", JSONObject(data.boardChecks))
+        .put("rounds", JSONArray(data.rounds.map {
+            JSONObject().put("startedAt", it.startedAt).put("trigger", it.trigger).put("finishedAt", it.finishedAt).put("result", it.result)
+        }))
 
     private fun fromJson(json: JSONObject): AppData {
         val searches = json.optJSONArray("searches") ?: JSONArray()
         val seen = json.optJSONArray("seen") ?: JSONArray()
         val jobs = json.optJSONArray("jobs") ?: JSONArray()
         val boardChecks = json.optJSONObject("boardChecks") ?: JSONObject()
+        val rounds = json.optJSONArray("rounds") ?: JSONArray()
         return AppData(
             searches = List(searches.length()) { i ->
                 val o = searches.getJSONObject(i)
@@ -147,6 +172,10 @@ object Store {
             remoteLastCheck = json.optLong("remoteLastCheck"),
             remoteStatus = json.optString("remoteStatus"),
             boardChecks = boardChecks.keys().asSequence().associateWith { boardChecks.optLong(it) },
+            rounds = List(rounds.length()) { i ->
+                val o = rounds.getJSONObject(i)
+                Round(o.getLong("startedAt"), o.optString("trigger"), o.optLong("finishedAt"), o.optString("result"))
+            },
         )
     }
 }

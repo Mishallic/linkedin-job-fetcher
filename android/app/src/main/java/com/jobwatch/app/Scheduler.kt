@@ -75,7 +75,7 @@ class CheckReceiver : BroadcastReceiver() {
         val pending = goAsync()
         thread {
             try {
-                Checker.round(app)
+                Checker.round(app, trigger = Checker.TRIGGER_ALARM)
             } finally {
                 pending.finish()
             }
