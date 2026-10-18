@@ -19,7 +19,8 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
 
 /**
- * Remote job boards that publish official feeds. Their terms ask apps to link to the original
+ * Remote job boards that publish official feeds, and the posts in Hacker News's monthly "Who is
+ * hiring?" thread (through its official search API). The boards' terms ask apps to link to the original
  * listing and name the board as the source (every job keeps its URL and source), and two of them
  * limit how often they may be read: Jobicy at most hourly, Remotive at most 4 times a day.
  *
@@ -33,7 +34,7 @@ object RemoteBoards {
     const val MOBILE_DATA_MINUTES = 60L
     private const val UNLIMITED = Scheduler.INTERVAL_MINUTES // boards with no limit of their own: every 10 minutes
     private const val LEGACY_WORK = "remote-boards" // 1.8 and earlier read the boards every 6 hours with WorkManager
-    private const val USER_AGENT = "Mozilla/5.0 (Linux; Android) JobWatch/1.11"
+    const val USER_AGENT = "Mozilla/5.0 (Linux; Android) JobWatch/1.11"
     private const val FIRST_CHECK_DAYS = 7L // the first check shows the past week's jobs
     private const val MAX_AGE_DAYS = 14L
     private const val DAY_MS = 86_400_000L
@@ -55,17 +56,21 @@ object RemoteBoards {
         }
     }
 
+    /** What a board's read gets: your positions, and when that board was last read (0 = never). */
+    class Query(val context: Context, val positions: List<String>, val since: Long)
+
     /** A board's feed, and the least time its terms allow between two reads. */
-    class Board(val name: String, val gapMinutes: Long, val read: (positions: List<String>) -> List<Listing>)
+    class Board(val name: String, val gapMinutes: Long, val read: (Query) -> List<Listing>)
 
     val boards = listOf(
         Board("We Work Remotely", UNLIMITED) { parseWeWorkRemotely(get("https://weworkremotely.com/remote-jobs.rss")) },
-        Board("Himalayas", UNLIMITED) { positions ->
-            positions.flatMap { parseHimalayas(get("https://himalayas.app/jobs/api/search?q=${encode(it)}&worldwide=true")) }
+        Board("Himalayas", UNLIMITED) { query ->
+            query.positions.flatMap { parseHimalayas(get("https://himalayas.app/jobs/api/search?q=${encode(it)}&worldwide=true")) }
         },
         Board("Remote OK", UNLIMITED) { parseRemoteOk(get("https://remoteok.com/api")) },
         Board("Jobicy", 60) { parseJobicy(get("https://jobicy.com/api/v2/remote-jobs?count=100")) },
         Board("Remotive", 6 * 60) { parseRemotive(get("https://remotive.com/api/remote-jobs?limit=150")) },
+        Board("Hacker News", 60) { query -> readHackerNews(query) }, // new posts trickle in; hourly is plenty
     )
 
     val boardNames = boards.dropLast(1).joinToString(", ") { it.name } + " and " + boards.last().name
@@ -182,7 +187,7 @@ object RemoteBoards {
         return (OPEN_TO_ALL + places).any { Regex("\\b${Regex.escape(it)}\\b").containsMatchIn(text) }
     }
 
-    private fun duplicateKey(title: String, company: String) =
+    fun duplicateKey(title: String, company: String) =
         "dup:" + "$title|$company".lowercase().replace(Regex("[^a-z0-9|]"), "")
 
     // ---------- checking ----------
@@ -196,9 +201,9 @@ object RemoteBoards {
     private fun encode(value: String) = URLEncoder.encode(value, "UTF-8")
 
     /** Listings from the [due] boards, read side by side, and the names of boards that couldn't be read. */
-    private fun fetch(due: List<Board>, positions: List<String>): Pair<List<Listing>, List<String>> {
+    private fun fetch(due: List<Board>, query: (Board) -> Query): Pair<List<Listing>, List<String>> {
         val results = arrayOfNulls<Result<List<Listing>>>(due.size)
-        due.mapIndexed { i, board -> thread { results[i] = runCatching { board.read(positions) } } }.forEach { it.join() }
+        due.mapIndexed { i, board -> thread { results[i] = runCatching { board.read(query(board)) } } }.forEach { it.join() }
         val listings = results.flatMap { it?.getOrNull().orEmpty() }
         val failed = due.filterIndexed { i, _ -> results[i]?.isSuccess != true }.map { it.name }
         return listings to failed
@@ -233,7 +238,7 @@ object RemoteBoards {
         // Note the reads before making them, so each board's limit holds even if this one is cut short.
         Store.update(context) { it.copy(boardChecks = it.boardChecks + due.associate { board -> board.name to now }) }
         val places = placesOf(data.searches)
-        val (listings, failed) = fetch(due, positions)
+        val (listings, failed) = fetch(due) { board -> Query(context, positions, data.boardChecks[board.name] ?: 0L) }
 
         val oldest = now - (if (data.remoteLastCheck == 0L) FIRST_CHECK_DAYS else MAX_AGE_DAYS) * DAY_MS
         val seen = data.seen.toHashSet()
@@ -265,6 +270,55 @@ object RemoteBoards {
         }
         return Read(fresh, "Job boards: ${fresh.size} new" + if (failed.isNotEmpty()) " (couldn't reach ${failed.joinToString(", ")})" else "")
     }
+
+    // ---------- Hacker News "Who is hiring?" ----------
+
+    private const val HN_SEARCH = "https://hn.algolia.com/api/v1/search_by_date"
+
+    /**
+     * The posts in this month's "Who is hiring?" thread since the last read (with an hour's overlap,
+     * in case a read failed), through Hacker News's official search API. The first read looks back a week.
+     */
+    private fun readHackerNews(query: Query): List<Listing> {
+        val thread = hiringThread(query.context)
+        val from = maxOf(query.since - 60 * 60_000, System.currentTimeMillis() - FIRST_CHECK_DAYS * DAY_MS) / 1000
+        return parseHackerNews(get("$HN_SEARCH?tags=comment,story_$thread&hitsPerPage=1000&numericFilters=created_at_i>$from"),
+            thread, query.positions)
+    }
+
+    /** This month's "Who is hiring?" thread. It changes once a month, so it's looked up at most once a day. */
+    private fun hiringThread(context: Context): String {
+        val prefs = context.getSharedPreferences("hackernews", Context.MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        prefs.getString("thread", null)?.let { if (now - prefs.getLong("lookedUp", 0L) in 0 until DAY_MS) return it }
+        val thread = parseHiringThread(get("$HN_SEARCH?tags=story,author_whoishiring&hitsPerPage=3"))
+            ?: throw IllegalStateException("no \"Who is hiring?\" thread")
+        prefs.edit().putString("thread", thread).putLong("lookedUp", now).apply()
+        return thread
+    }
+
+    /** The newest "Who is hiring?" thread among the latest posts of the account that opens them. */
+    fun parseHiringThread(json: String): String? = JSONObject(json).optJSONArray("hits")?.objects()
+        ?.firstOrNull { it.optString("title").contains("who is hiring", ignoreCase = true) }?.optString("objectID")
+
+    /**
+     * The thread's posts, not the replies to them. By the thread's rules a post's first line reads
+     * "Company | Role | Location | ...": the role is the part naming one of your positions.
+     */
+    fun parseHackerNews(json: String, thread: String, positions: List<String>): List<Listing> =
+        (JSONObject(json).optJSONArray("hits")?.objects() ?: emptyList())
+            .filter { it.opt("parent_id")?.toString() == thread }
+            .mapNotNull { hit ->
+                val first = cleanText(hit.optString("comment_text").substringBefore("<p>"))
+                val parts = first.split("|").map { it.trim() }.filter { it.isNotEmpty() }
+                if (parts.size < 2) return@mapNotNull null
+                val role = parts.drop(1).firstOrNull { part -> positions.any { titleMatches(part, it) } } ?: parts[1]
+                val company = parts[0].replace(Regex("\\(?https?://\\S+\\)?"), "").trim()
+                val where = parts.drop(1).filter { it != role && !it.startsWith("http") }.joinToString(" · ")
+                val id = hit.optString("objectID")
+                Listing("hn:$id", role, company, where, hit.optLong("created_at_i") * 1000,
+                    "https://news.ycombinator.com/item?id=$id", "Hacker News")
+            }
 
     /** Cancel the 6-hourly schedule that 1.8 and earlier left in WorkManager. */
     fun cancelOldSchedule(context: Context) {

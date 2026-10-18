@@ -33,7 +33,7 @@ class CheckerTest {
 
     @Before
     fun setUp() {
-        Store.update(context) { it.copy(remoteOn = false) } // the boards have their own tests
+        Store.update(context) { it.copy(remoteOn = false, sitesOn = false) } // the boards and sites have their own tests
     }
 
     @After

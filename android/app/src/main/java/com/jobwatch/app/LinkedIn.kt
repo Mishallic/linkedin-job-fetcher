@@ -122,6 +122,29 @@ object Http {
     @Volatile
     var fake: ((String) -> Pair<Int, String>)? = null
 
+    /** Tests swap in canned answers to POST requests (Jooble's) here; without it, [fake] answers them too. */
+    @Volatile
+    var fakePost: ((url: String, body: String) -> Pair<Int, String>)? = null
+
+    fun post(url: String, body: String, headers: Map<String, String> = emptyMap()): Pair<Int, String> {
+        fakePost?.let { return it(url, body) }
+        fake?.let { return it(url) }
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 15_000
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            headers.forEach { (key, value) -> connection.setRequestProperty(key, value) }
+            connection.outputStream.use { it.write(body.toByteArray()) }
+            val status = connection.responseCode
+            val stream = if (status < 400) connection.inputStream else connection.errorStream
+            return status to (stream?.bufferedReader()?.use { it.readText() } ?: "")
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     fun get(url: String, headers: Map<String, String> = emptyMap()): Pair<Int, String> {
         fake?.let { return it(url) }
         val connection = URL(url).openConnection() as HttpURLConnection

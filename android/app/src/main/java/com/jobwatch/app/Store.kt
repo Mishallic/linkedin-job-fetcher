@@ -24,6 +24,10 @@ data class AppData(
     val linkedInPausedUntil: Long = 0L, // after a "slow down", background checks leave LinkedIn alone until then
     val alertQueue: List<String> = emptyList(), // ids of new jobs waiting for the next alert
     val lastAlertAt: Long = 0L,
+    val sitesOn: Boolean = true, // also read the job sites (ReliefWeb; Jooble with a key)
+    val joobleKey: String = "",
+    val siteChecks: Map<String, Long> = emptyMap(), // "ReliefWeb", or "Jooble|search" -> when it was last read
+    val siteStatus: Map<String, String> = emptyMap(), // site -> how its last read went
 )
 
 /**
@@ -157,6 +161,10 @@ object Store {
         .put("linkedInPausedUntil", data.linkedInPausedUntil)
         .put("alertQueue", JSONArray(data.alertQueue))
         .put("lastAlertAt", data.lastAlertAt)
+        .put("sitesOn", data.sitesOn)
+        .put("joobleKey", data.joobleKey)
+        .put("siteChecks", JSONObject(data.siteChecks))
+        .put("siteStatus", JSONObject(data.siteStatus))
 
     private fun fromJson(json: JSONObject): AppData {
         val searches = json.optJSONArray("searches") ?: JSONArray()
@@ -164,6 +172,8 @@ object Store {
         val jobs = json.optJSONArray("jobs") ?: JSONArray()
         val boardChecks = json.optJSONObject("boardChecks") ?: JSONObject()
         val rounds = json.optJSONArray("rounds") ?: JSONArray()
+        val siteChecks = json.optJSONObject("siteChecks") ?: JSONObject()
+        val siteStatus = json.optJSONObject("siteStatus") ?: JSONObject()
         return AppData(
             searches = List(searches.length()) { i ->
                 val o = searches.getJSONObject(i)
@@ -194,6 +204,10 @@ object Store {
             linkedInPausedUntil = json.optLong("linkedInPausedUntil"),
             alertQueue = json.optJSONArray("alertQueue").strings(),
             lastAlertAt = json.optLong("lastAlertAt"),
+            sitesOn = json.optBoolean("sitesOn", true),
+            joobleKey = json.optString("joobleKey"),
+            siteChecks = siteChecks.keys().asSequence().associateWith { siteChecks.optLong(it) },
+            siteStatus = siteStatus.keys().asSequence().associateWith { siteStatus.optString(it) },
         )
     }
 

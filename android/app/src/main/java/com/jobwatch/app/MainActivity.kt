@@ -322,6 +322,15 @@ fun MainList(
                     }
                 })
             }
+            item(key = "sites") {
+                JobSitesCard(data,
+                    onChange = { on ->
+                        Store.update(context) { it.copy(sitesOn = on) }
+                        if (on) readSitesNow(context)
+                    },
+                    onKeySaved = { readSitesNow(context) },
+                )
+            }
 
             val newCount = data.jobs.count { it.isNew }
             item { SectionTitle("Jobs (${data.jobs.size}${if (newCount > 0) ", $newCount new" else ""})") }
@@ -499,6 +508,75 @@ fun RemoteBoardsCard(data: AppData, onChange: (Boolean) -> Unit) {
                 Text(status, style = MaterialTheme.typography.bodySmall)
             }
             Switch(checked = data.remoteOn, onCheckedChange = null)
+        }
+    }
+}
+
+/** Read the job sites that are due right away (just turned on, or a new Jooble key), and announce what's new. */
+private fun readSitesNow(context: Context) = thread {
+    val app = context.applicationContext
+    Checker.announce(app, JobSites.check(app, force = true).jobs, immediate = true)
+}
+
+/** On/off for the job sites, what they look for, how their last reads went, and Jooble's key. */
+@Composable
+fun JobSitesCard(data: AppData, onChange: (Boolean) -> Unit, onKeySaved: () -> Unit) {
+    val context = LocalContext.current
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    var editing by rememberSaveable { mutableStateOf(false) }
+    var key by rememberSaveable { mutableStateOf("") }
+    fun status(site: String) = when {
+        !data.sitesOn -> "Off"
+        !data.checksOn -> "Paused while background checks are off"
+        site == JobSites.RELIEFWEB && JobSites.reliefWebUrl(data.searches) == null -> "Add a search with a place to use it"
+        site == JobSites.JOOBLE && data.joobleKey.isBlank() -> "Add your free API key below to turn it on"
+        else -> data.siteStatus[site] ?: "First check is on its way"
+    }
+    Card(Modifier.fillMaxWidth()) {
+        Column {
+            Row(
+                Modifier.fillMaxWidth()
+                    .toggleable(value = data.sitesOn, onValueChange = onChange, role = Role.Switch)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(JobSites.LABEL, style = MaterialTheme.typography.titleMedium)
+                    Text("ReliefWeb (run by the UN's OCHA: UN and NGO jobs) and Jooble (a job search engine) look for your " +
+                        "positions in your searches' places, each at most hourly. Their jobs show under the search they match.",
+                        style = MaterialTheme.typography.bodySmall, color = muted)
+                    Text("${JobSites.RELIEFWEB}: ${status(JobSites.RELIEFWEB)}", style = MaterialTheme.typography.bodySmall)
+                    Text("${JobSites.JOOBLE}: ${status(JobSites.JOOBLE)}", style = MaterialTheme.typography.bodySmall)
+                }
+                Switch(checked = data.sitesOn, onCheckedChange = null)
+            }
+            if (data.sitesOn && (data.joobleKey.isBlank() || editing)) {
+                Column(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Jooble's API key is free. Its form asks for a website; the key is only used for your searches.",
+                        style = MaterialTheme.typography.bodySmall, color = muted)
+                    OutlinedTextField(key, { key = it }, Modifier.fillMaxWidth(), label = { Text("Jooble API key") }, singleLine = true)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { openUrl(context, JobSites.JOOBLE_KEY_PAGE) }) { Text("Get a key") }
+                        Spacer(Modifier.weight(1f))
+                        if (editing) TextButton(onClick = { editing = false; key = "" }) { Text("Cancel") }
+                        Button(onClick = {
+                            val saved = key.trim()
+                            // A new key starts afresh: Jooble is asked for each search straight away.
+                            Store.update(context) { d ->
+                                d.copy(joobleKey = saved, siteChecks = d.siteChecks.filterKeys { !it.startsWith("${JobSites.JOOBLE}|") },
+                                    siteStatus = d.siteStatus - JobSites.JOOBLE)
+                            }
+                            editing = false
+                            key = ""
+                            onKeySaved()
+                        }, enabled = key.isNotBlank()) { Text("Save") }
+                    }
+                }
+            } else if (data.sitesOn) {
+                TextButton(onClick = { editing = true }, modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)) {
+                    Text("Change Jooble key")
+                }
+            }
         }
     }
 }

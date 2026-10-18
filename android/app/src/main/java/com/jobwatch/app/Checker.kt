@@ -10,8 +10,8 @@ import kotlin.concurrent.thread
  * apart whatever starts the tick (the alarm, the refresh button, a new search), so with up to
  * [Store.MAX_SEARCHES] searches LinkedIn gets at most 5 requests every 10 minutes, and each search
  * is checked every [Scheduler.INTERVAL_MINUTES] minutes. A search with more new jobs than one page
- * holds reads one page per turn. A tick also reads the job boards that are due, side by side with
- * LinkedIn: other sites, with limits of their own.
+ * holds reads one page per turn. A tick also reads the remote job boards and the job sites that are
+ * due, side by side with LinkedIn: other sites, with limits of their own.
  *
  * Every tick goes into the history ([AppData.rounds]) when it starts and again when it ends, so one
  * the phone stopped half-way shows as unfinished. New jobs are announced at most every 10 minutes,
@@ -65,7 +65,8 @@ object Checker {
     fun nextTickAt(context: Context, data: AppData, now: Long): Long {
         val linkedIn = data.searches.minOfOrNull { if (it.cursor > 0) 0L else minOf(it.lastTry, now) + INTERVAL_MS }
             ?.let { maxOf(it, linkedInReadyAt(data, now)) }
-        val due = listOfNotNull(linkedIn, RemoteBoards.nextDueAt(context, data)).minOrNull() ?: (now + INTERVAL_MS)
+        val due = listOfNotNull(linkedIn, RemoteBoards.nextDueAt(context, data), JobSites.nextDueAt(data)).minOrNull()
+            ?: (now + INTERVAL_MS)
         return maxOf(due, minOf(data.lastRun, now) + SPACING_MS, now + 1_000)
     }
 
@@ -105,13 +106,18 @@ object Checker {
         var announce = emptyList<Job>()
         val result = try {
             var boards = Result.success(RemoteBoards.Read.NONE)
-            val reading = thread { boards = runCatching { RemoteBoards.check(context, force) } }
+            var sites = Result.success(JobSites.Read.NONE)
+            val reading = listOf(
+                thread { boards = runCatching { RemoteBoards.check(context, force) } },
+                thread { sites = runCatching { JobSites.check(context, force) } },
+            )
             val paused = !force && now < minOf(data.linkedInPausedUntil, now + INTERVAL_MS) - TOLERANCE_MS
             val turn = if (search != null) ask(search, data, now) else noRequest(data, now, ready, paused)
-            reading.join()
-            val jobs = turn.jobs + boards.getOrNull()?.jobs.orEmpty()
+            reading.forEach { it.join() }
+            val jobs = turn.jobs + boards.getOrNull()?.jobs.orEmpty() + sites.getOrNull()?.jobs.orEmpty()
             val boardsNote = boards.fold({ it.note }, { "Job boards failed: ${it.message ?: it.javaClass.simpleName}" })
-            val note = listOfNotNull(turn.note, boardsNote).joinToString(" · ")
+            val sitesNote = sites.fold({ it.note }, { "Job sites failed: ${it.message ?: it.javaClass.simpleName}" })
+            val note = listOfNotNull(turn.note, boardsNote, sitesNote).joinToString(" · ")
             Store.update(context) { d ->
                 val (queued, due) = queue(turn.save(d), jobs, now, immediate = force)
                 announce = due

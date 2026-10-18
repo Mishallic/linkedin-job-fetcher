@@ -1,0 +1,53 @@
+{
+ "totalCount": 4,
+ "jobs": [
+  {
+   "title": "Senior Software Engineer",
+   "location": "Dubai",
+   "snippet": "&nbsp;...build our platform...",
+   "salary": "",
+   "source": "careers.acme.example",
+   "type": "Full-time",
+   "link": "https://jooble.org/desc/-7001",
+   "company": "Acme",
+   "updated": "UPDATED",
+   "id": -7001
+  },
+  {
+   "title": "Software Engineer (Backend)",
+   "location": "Abu Dhabi",
+   "snippet": "",
+   "salary": "AED 20,000",
+   "source": "jobs.initech.example",
+   "type": "Full-time",
+   "link": "https://jooble.org/desc/-7002",
+   "company": "Initech",
+   "updated": "UPDATED",
+   "id": -7002
+  },
+  {
+   "title": "Software Engineer",
+   "location": "Riyadh",
+   "snippet": "",
+   "salary": "",
+   "source": "example",
+   "type": "",
+   "link": "https://jooble.org/desc/-7003",
+   "company": "Globex",
+   "updated": "UPDATED",
+   "id": -7003
+  },
+  {
+   "title": "Marketing Manager",
+   "location": "Dubai",
+   "snippet": "",
+   "salary": "",
+   "source": "example",
+   "type": "",
+   "link": "https://jooble.org/desc/-7004",
+   "company": "Hooli",
+   "updated": "UPDATED",
+   "id": -7004
+  }
+ ]
+}

@@ -16,6 +16,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -210,7 +211,7 @@ class UiTest {
         // Several at once: long-press to start selecting, then use the bar at the bottom.
         val jobs = Store.load(activity).jobs
         val job = jobs.first { j -> jobs.count { it.title == j.title } == 1 }
-        list.performScrollToNode(hasText(job.title))
+        list.performScrollToKey("job:${job.id}")
         compose.onNode(hasClickAction() and hasText(job.title)).performTouchInput { longClick() }
         compose.onNodeWithText("1 selected").assertIsDisplayed()
         compose.onNodeWithText("Select all").performClick()
@@ -224,7 +225,7 @@ class UiTest {
         // And back to new for two of them.
         compose.onNode(hasClickAction() and hasText(job.title)).performTouchInput { longClick() }
         val other = jobs.first { j -> j.id != job.id && jobs.count { it.title == j.title } == 1 }
-        list.performScrollToNode(hasText(other.title))
+        list.performScrollToKey("job:${other.id}")
         compose.onNode(hasClickAction() and hasText(other.title)).performClick() // while selecting, a tap selects
         compose.onNodeWithText("2 selected").assertIsDisplayed()
         compose.onNodeWithText("Mark as new").performClick()
@@ -243,9 +244,9 @@ class UiTest {
         val (first, second) = jobs.filter { j -> jobs.count { it.title == j.title } == 1 }.take(2)
         val list = compose.onNode(hasScrollToIndexAction())
 
-        list.performScrollToNode(hasText(first.title))
+        list.performScrollToKey("job:${first.id}")
         compose.onNode(hasClickAction() and hasText(first.title)).performTouchInput { longClick() }
-        list.performScrollToNode(hasText(second.title))
+        list.performScrollToKey("job:${second.id}")
         compose.onNode(hasClickAction() and hasText(second.title)).performClick()
         compose.onNodeWithText("2 selected").assertIsDisplayed()
         screenshot("11-delete")
@@ -272,6 +273,20 @@ class UiTest {
         compose.waitForIdle()
         assertFalse(Store.load(compose.activity).remoteOn)
         compose.onNode(card and hasText("Off")).assertIsDisplayed()
+    }
+
+    @Test
+    fun jobSitesCardTakesAJoobleKey() {
+        val activity = compose.activity
+        val list = compose.onNode(hasScrollToIndexAction())
+        list.performScrollToNode(hasText("Jooble API key"))
+        compose.onNodeWithText("Jooble: Add your free API key below to turn it on", substring = true).assertExists()
+        compose.onNode(hasSetTextAction() and hasText("Jooble API key")).performTextInput("KEY-123")
+        compose.onNodeWithText("Save").performClick()
+        compose.waitForIdle()
+        assertEquals("KEY-123", Store.load(activity).joobleKey)
+        list.performScrollToNode(hasText("Change Jooble key"))
+        screenshot("10-job-sites")
     }
 
     @Test

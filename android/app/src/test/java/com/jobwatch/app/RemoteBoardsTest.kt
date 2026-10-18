@@ -140,22 +140,59 @@ class RemoteBoardsTest {
             return requests.map { URI(it).host.removePrefix("www.") }.toSet()
         }
         val unlimited = setOf("weworkremotely.com", "himalayas.app", "remoteok.com")
-        val all = unlimited + "jobicy.com" + "remotive.com"
+        val hourly = setOf("jobicy.com", "hn.algolia.com")
+        val all = unlimited + hourly + "remotive.com"
 
         assertEquals("the first check reads every board", all, boardsRead())
         assertEquals("and none again straight away", emptySet<String>(), boardsRead())
         minutesPass(10)
-        assertEquals("next round: the boards without a limit", unlimited, boardsRead())
+        assertEquals("ten minutes on: the boards without a limit", unlimited, boardsRead())
         minutesPass(50)
-        assertEquals("an hour on: Jobicy too", unlimited + "jobicy.com", boardsRead())
+        assertEquals("an hour on: Jobicy and Hacker News too", unlimited + hourly, boardsRead())
         minutesPass(5 * 60)
         assertEquals("six hours on: Remotive too", all, boardsRead())
 
         RemoteBoards.onMobileData = { true }
         minutesPass(10)
-        assertEquals("on mobile data, not every round", emptySet<String>(), boardsRead())
+        assertEquals("on mobile data, not every 10 minutes", emptySet<String>(), boardsRead())
         minutesPass(50)
-        assertEquals("but hourly", unlimited + "jobicy.com", boardsRead())
+        assertEquals("but hourly", unlimited + hourly, boardsRead())
+    }
+
+    @Test
+    fun readsHackerNewsHiringPosts() {
+        assertEquals("49922569", RemoteBoards.parseHiringThread(sample("hackernews-threads.json")))
+        val posts = RemoteBoards.parseHackerNews(sample("hackernews.json"), "49922569", listOf("software engineer", "data analyst"))
+        assertEquals("the posts, not the replies to them", 6, posts.size)
+        val enveritas = posts.single { it.company.startsWith("Enveritas") }
+        assertEquals("Backend Software Engineer", enveritas.title)
+        assertEquals("Remote (Global)", enveritas.where)
+        assertEquals("https://news.ycombinator.com/item?id=" + enveritas.id.removePrefix("hn:"), enveritas.url)
+        assertTrue(posts.all { it.source == "Hacker News" && it.postedAt > 0 })
+    }
+
+    @Test
+    fun hackerNewsPostsOpenToYourRegionAreKeptAndLaterReadsAskOnlyForNewerOnes() {
+        val anHourAgo = Instant.now().minusSeconds(3600).epochSecond
+        val posts = sample("hackernews.json").replace(Regex("\"created_at_i\": \\d+"), "\"created_at_i\": $anHourAgo")
+        Http.fake = { url ->
+            requests += url
+            when {
+                "author_whoishiring" in url -> 200 to sample("hackernews-threads.json")
+                "story_49922569" in url -> 200 to posts
+                else -> 200 to "" // the other boards have nothing this time
+            }
+        }
+        val found = RemoteBoards.check(context).jobs.filter { it.source == "Hacker News" }
+        // Buoyant and All Gravy hire in Europe, NeuralFrame in the US; Treat Health and Irash Tech aren't your positions.
+        assertEquals(listOf("Backend Software Engineer @ Enveritas (YC S18, non-profit)"), found.map { "${it.title} @ ${it.company}" })
+
+        minutesPass(60)
+        RemoteBoards.check(context)
+        assertEquals("the thread is looked up once a day", 1, requests.count { "author_whoishiring" in it })
+        fun from(url: String) = Regex("created_at_i>(\\d+)").find(url)!!.groupValues[1].toLong()
+        val (first, second) = requests.filter { "story_49922569" in it }.map(::from)
+        assertTrue("the first read looks back a week, the next only past the last read", second - first > 5 * 86_400)
     }
 
     @Test

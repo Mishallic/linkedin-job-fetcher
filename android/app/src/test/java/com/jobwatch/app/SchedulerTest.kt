@@ -101,6 +101,7 @@ class SchedulerTest {
     fun eachCheckReadsTheBoardsThatAreDueUnlessEitherSwitchIsOff() {
         Http.fake = { url -> requests += url; 200 to "" }
         fun boardRequests() = requests.count { "linkedin.com" !in it }
+        Store.update(context) { it.copy(sitesOn = false) } // the job sites have their own tests
 
         Store.update(context) { it.copy(checksOn = false) }
         Checker.tick(context)
@@ -120,7 +121,7 @@ class SchedulerTest {
     @Test
     fun theAlarmIsSetForTheNextSearchsTurn() {
         Http.fake = { url -> requests += url; 200 to "" }
-        Store.update(context) { it.copy(remoteOn = false) }
+        Store.update(context) { it.copy(remoteOn = false, sitesOn = false) }
         Checker.tick(context)
         var data = Store.load(context)
         assertEquals("5 searches: the next one goes 2 minutes later", data.lastRun + 2 * 60_000,

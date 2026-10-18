@@ -1,0 +1,182 @@
+{
+ "exhaustive": {
+  "nbHits": true,
+  "typo": true
+ },
+ "exhaustiveNbHits": true,
+ "exhaustiveTypo": true,
+ "hits": [
+  {
+   "_tags": [
+    "comment",
+    "author_onnimonni",
+    "story_49922569"
+   ],
+   "author": "onnimonni",
+   "children": [
+    50116161
+   ],
+   "comment_text": "Treat Health | Full-stack Engineer (Elixir, Phoenix LiveView, React) | Helsinki, Finland | ONSITE | Full-time | Compensation in the link below<p>Treat Health is building healthcare where the right care takes minutes, not days. You describe your concern in your own words, our smart intake asks the follow-up questions a doctor would ask, and a licensed doctor reviews the whole picture and decides on the care. Prescriptions and records go straight to Kanta, Finland&#x27;s national health archive.<p>Right now, agentic frontend engineering and agentic mobile app development matter most to us. We expect you to work across the whole stack, with our assistance and tooling.<p>Stack: Elixir, Phoenix LiveView, React, TypeScript, Tailwind, GCP, Cloudflare and Rust, with Swift and Kotlin for our native mobile apps. Claude is part of everyday work, from planning and coding to review. We care about how well you direct coding agents, not how fast you type.<p>Small team, high trust: you own problems end to end, with real influence on what we build. Health data stays in the EU, every sign-in uses strong identification, and patient data never ends up in logs.<p>For now, working on site in Helsinki is a must, and we can&#x27;t offer relocation or visa support, so you need to already be able to work in Finland. We may hire remotely in the future, so check back later.<p>Compensation, details and how to apply: <a href=\"https:&#x2F;&#x2F;treat.health&#x2F;en&#x2F;careers&#x2F;full-stack-engineer&#x2F;\" rel=\"nofollow\">https:&#x2F;&#x2F;treat.health&#x2F;en&#x2F;careers&#x2F;full-stack-engineer&#x2F;</a>",
+   "created_at": "2026-10-15T14:30:58Z",
+   "created_at_i": 1792074658,
+   "objectID": "50104234",
+   "parent_id": 49922569,
+   "story_id": 49922569,
+   "story_title": "Ask HN: Who is hiring? (October 2026)",
+   "updated_at": "2026-10-16T09:30:03Z"
+  },
+  {
+   "_tags": [
+    "comment",
+    "author_kscan1992",
+    "story_49922569"
+   ],
+   "author": "kscan1992",
+   "comment_text": "NeuralFrame | Senior Backend Engineer, Medical Data Pipeline (Python + Rust) | REMOTE (US only, US time zones; no visa sponsorship) | Full-time | $170k–$210k + 0.1%–0.25% equity<p>We build software that hospitals, cancer registries and researchers use. You&#x27;d own the pipeline that pulls data from hospital systems and transforms it for analytics and research.<p>Where Rust fits: part of our hospital data acquisition layer, the code that talks to hospital systems, is written in Rust. You&#x27;d work on both sides: Rust where performance and correctness matter most, async Python for the rest of the pipeline. Rust experience is a strong plus. Whether you learned it at work or on your own, we want to hear what you built with it.<p>Stack: Rust, async Python (mypy, pytest, ruff, uv), PostgreSQL and MongoDB, Dagster, Terraform&#x2F;OpenTofu, AWS (ECS&#x2F;Fargate, RDS, Lambda, S3), GitHub Actions.<p>You&#x27;ll need 5+ years building backend services or data pipelines in production (retries, idempotency, schema design and migrations, well-tested and typed code) and strong Python and SQL. No healthcare background needed.<p>Apply: <a href=\"https:&#x2F;&#x2F;wellfound.com&#x2F;jobs&#x2F;4829721-senior-backend-software-engineer-medical-data-pipeline\" rel=\"nofollow\">https:&#x2F;&#x2F;wellfound.com&#x2F;jobs&#x2F;4829721-senior-backend-software-e...</a>. In your note, tell us in a few sentences about one pipeline failure you traced (what broke, how you found it, what you changed) and, if you&#x27;ve written Rust, what you built with it.",
+   "created_at": "2026-10-14T21:53:28Z",
+   "created_at_i": 1792014808,
+   "objectID": "50095921",
+   "parent_id": 49922569,
+   "story_id": 49922569,
+   "story_title": "Ask HN: Who is hiring? (October 2026)",
+   "updated_at": "2026-10-15T13:11:46Z"
+  },
+  {
+   "_tags": [
+    "comment",
+    "author_adi_singh_21",
+    "story_49922569"
+   ],
+   "author": "adi_singh_21",
+   "comment_text": "Irash Tech | Business Development Manager (Freelance, Commission-only) | REMOTE (Worldwide) | Contract<p>Irash Tech is a small AI-focused development agency based in Hyderabad, India. We build web apps (Next.js, React, Node), mobile apps (React Native&#x2F;Expo) and AI automation (LLM integrations, RAG, document processing, n8n&#x2F;Python workflows) for startups and small businesses.<p>I&#x27;m the founder, an engineer with 7+ years in full-stack and AI, and I handle scoping and delivery. I&#x27;m looking for people anywhere in the world who can find and close clients in their own market.<p>- 15% of project value on every client you close, paid within 14 days of client payment\n- 12 months of commission on repeat work from clients you bring\n- Commission-only, no base salary. Non-exclusive, so it works alongside your other work\n- You own the client relationship and negotiation; final quotes are approved by us<p>Good fit: you know founders, SMBs or agencies that need software built, and you&#x27;ve sold software, dev or digital services before.<p>Apply: <a href=\"https:&#x2F;&#x2F;www.irashtech.com&#x2F;careers&#x2F;business-development-manager\" rel=\"nofollow\">https:&#x2F;&#x2F;www.irashtech.com&#x2F;careers&#x2F;business-development-manag...</a>\nOr email hello@irashtech.com with a short note on one deal you&#x27;ve closed.",
+   "created_at": "2026-10-13T09:31:19Z",
+   "created_at_i": 1791883879,
+   "objectID": "50068986",
+   "parent_id": 49922569,
+   "story_id": 49922569,
+   "story_title": "Ask HN: Who is hiring? (October 2026)",
+   "updated_at": "2026-10-15T15:53:17Z"
+  },
+  {
+   "_tags": [
+    "comment",
+    "author_buoyanthiring",
+    "story_49922569"
+   ],
+   "author": "buoyanthiring",
+   "children": [
+    50080391
+   ],
+   "comment_text": "Buoyant | Senior Software Engineer – Kubernetes &#x2F; Distributed Systems | REMOTE – US &#x2F; Canada &#x2F; Brazil &#x2F; Europe (CET-compatible) | Full-time<p>Buoyant is the company behind Linkerd, the CNCF-graduated service mesh for Kubernetes. We’re a small, fully remote engineering team building a new cloud-native infrastructure product.<p>We’re looking for a senior, self-directed engineer who has built production infrastructure software and is comfortable working deep in the Kubernetes ecosystem.<p>Relevant experience may include Kubernetes APIs, controllers&#x2F;operators, CRDs, reconciliation systems, distributed systems&#x2F;control-plane engineering, Go and&#x2F;or Rust, gRPC, networking, service mesh, security, identity, or other cloud infrastructure.<p>This is a hands-on role with significant architectural ownership on a small engineering team.<p>Location: Remote – US, Canada, South America, or Europe with Central European Time-compatible working hours.<p>Interested? Email scott.deakin@buoyant.io with “HN – Buoyant Control Plane” in the subject and include your LinkedIn, GitHub, or résumé.",
+   "created_at": "2026-10-07T18:31:29Z",
+   "created_at_i": 1791397889,
+   "objectID": "49996914",
+   "parent_id": 49922569,
+   "story_id": 49922569,
+   "story_title": "Ask HN: Who is hiring? (October 2026)",
+   "updated_at": "2026-10-13T23:27:26Z"
+  },
+  {
+   "_tags": [
+    "comment",
+    "author_efijob",
+    "story_49922569"
+   ],
+   "author": "efijob",
+   "comment_text": "All Gravy | Senior Software Engineer (Full-stack TypeScript) | Copenhagen or London | REMOTE (European time zones) or ONSITE | Full-time<p>All Gravy is one app for running frontline teams in hospitality and retail: scheduling, shift swaps, and an AI assistant that answers staff questions and handles routine tasks. Over 2,000 restaurants and stores use it, including Dishoom, Ottolenghi, Gail&#x27;s, L&#x27;Osteria and 7-Eleven. We&#x27;ve grown 10x in two years.<p>You own features end to end, from the manager and employee interfaces where schedules are built and shifts get picked up, to the backend services and data layers behind them. We use AI tools heavily in our own work, and we would like you to help shape how the team uses them.<p>Stack: TypeScript everywhere. React, React Native, Node.js, NestJS, MongoDB.<p>Looking for: 5+ years of full-stack experience with React&#x2F;React Native&#x2F;TypeScript&#x2F;Node, experience designing fault-tolerant distributed systems, and a startup or scale-up background. Bring concrete examples of how you build with AI tools today. NestJS and MongoDB are a plus.<p>Apply here: <a href=\"https:&#x2F;&#x2F;nordictechjobs.com&#x2F;jobs&#x2F;3MlSv0uALS\" rel=\"nofollow\">https:&#x2F;&#x2F;nordictechjobs.com&#x2F;jobs&#x2F;3MlSv0uALS</a>",
+   "created_at": "2026-10-01T23:01:24Z",
+   "created_at_i": 1790895684,
+   "objectID": "49928066",
+   "parent_id": 49922569,
+   "story_id": 49922569,
+   "story_title": "Ask HN: Who is hiring? (October 2026)",
+   "updated_at": "2026-10-03T04:50:35Z"
+  },
+  {
+   "_tags": [
+    "comment",
+    "author_cuchoi",
+    "story_49922569"
+   ],
+   "author": "cuchoi",
+   "children": [
+    49967915,
+    50045707
+   ],
+   "comment_text": "Enveritas (YC S18, non-profit) | Backend Software Engineer | Remote (Global) | <a href=\"https:&#x2F;&#x2F;enveritas.org&#x2F;jobs&#x2F;\" rel=\"nofollow\">https:&#x2F;&#x2F;enveritas.org&#x2F;jobs&#x2F;</a> Enveritas is a 501(c)(3) nonprofit working on sustainability issues facing smallholder coffee farmers. We collect field data in 30+ countries and build systems for analyzing risks in coffee, cocoa, and tea supply chains (including EUDR-related deforestation checks).<p>* Backend Software Engineer (Python, PostgreSQL&#x2F;PostGIS, Docker, AWS, Terraform) - $135-$155k -<a href=\"https:&#x2F;&#x2F;enveritas.org&#x2F;jobs&#x2F;backend-software-eng&#x2F;#10d7adef8us\" rel=\"nofollow\">https:&#x2F;&#x2F;enveritas.org&#x2F;jobs&#x2F;backend-software-eng&#x2F;#10d7adef8us</a> (worldwide remote)",
+   "created_at": "2026-10-01T18:44:56Z",
+   "created_at_i": 1790880296,
+   "objectID": "49925489",
+   "parent_id": 49922569,
+   "story_id": 49922569,
+   "story_title": "Ask HN: Who is hiring? (October 2026)",
+   "updated_at": "2026-10-11T17:39:19Z"
+  },
+  {
+   "_tags": [
+    "comment",
+    "author_ridsvazi",
+    "story_49922569"
+   ],
+   "author": "ridsvazi",
+   "comment_text": "Would you be open for a full stack engineer on fully remote? I&#x27;m actively seeking for an opportunity and would be pleasure to help you for development needs at competitive rates.",
+   "created_at": "2026-10-16T09:29:03Z",
+   "created_at_i": 1792142943,
+   "objectID": "50116161",
+   "parent_id": 50104234,
+   "story_id": 49922569,
+   "story_title": "Ask HN: Who is hiring? (October 2026)",
+   "updated_at": "2026-10-16T09:32:49Z"
+  },
+  {
+   "_tags": [
+    "comment",
+    "author_scottfahl",
+    "story_49922569"
+   ],
+   "author": "scottfahl",
+   "comment_text": "Happy to announce that this role has been filled. Thanks to all that applied.",
+   "created_at": "2026-10-14T20:12:02Z",
+   "created_at_i": 1792008722,
+   "objectID": "50094395",
+   "parent_id": 49939260,
+   "story_id": 49922569,
+   "story_title": "Ask HN: Who is hiring? (October 2026)",
+   "updated_at": "2026-10-14T20:16:46Z"
+  }
+ ],
+ "hitsPerPage": 1000,
+ "nbHits": 8,
+ "nbPages": 1,
+ "page": 0,
+ "params": "tags=comment%2Cstory_49922569&hitsPerPage=1000&advancedSyntax=true&analyticsTags=backend",
+ "processingTimeMS": 4,
+ "processingTimingsMS": {
+  "_request": {
+   "roundTrip": 26
+  },
+  "afterFetch": {
+   "format": {
+    "highlighting": 21,
+    "total": 25
+   },
+   "merge": {
+    "entries": {
+     "total": 1
+    },
+    "mergeLoop": {
+     "prepareNextHit": 2,
+     "total": 2
+    },
+    "total": 3
+   },
+   "total": 3
+  },
+  "fetch": {
+   "total": 1
+  },
+  "total": 4
+ },
+ "query": "",
+ "serverTimeMS": 31
+}
