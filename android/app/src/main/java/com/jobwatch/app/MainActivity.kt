@@ -265,8 +265,8 @@ fun AboutDialog(data: AppData, onClose: () -> Unit) {
                 if (app.lastUpdateTime > 0) {
                     Text("Installed ${timeText(app.lastUpdateTime)}", style = MaterialTheme.typography.bodySmall, color = muted)
                 }
-                Text("Checks each of your LinkedIn searches every ${Scheduler.INTERVAL_MINUTES} minutes, one search every " +
-                    "${Scheduler.SPACING_MINUTES} minutes so LinkedIn isn't asked too often, and remote job boards as often " +
+                Text("Checks each of your LinkedIn searches ${everyText(Scheduler.INTERVAL_MINUTES)}, one search " +
+                    "${everyText(Scheduler.SPACING_MINUTES)} so LinkedIn isn't asked too often, and remote job boards as often " +
                     "as each one allows, and tells you about new and reposted jobs. It runs entirely on this phone.",
                     style = MaterialTheme.typography.bodyMedium)
                 Text("${data.searches.size} searches · ${data.seen.size} jobs found so far",
@@ -428,7 +428,7 @@ fun ChecksCard(data: AppData, onChange: (Boolean) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text("Check every ${Scheduler.INTERVAL_MINUTES} minutes", style = MaterialTheme.typography.titleSmall)
+                    Text("Check ${everyText(Scheduler.INTERVAL_MINUTES)}", style = MaterialTheme.typography.titleSmall)
                     Text(detail, style = MaterialTheme.typography.bodySmall,
                         color = if (limited) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -549,7 +549,7 @@ fun RemoteBoardsCard(data: AppData, onChange: (Boolean) -> Unit) {
             Column(Modifier.weight(1f).padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(RemoteBoards.LABEL, style = MaterialTheme.typography.titleMedium)
                 Text("Remote ${positions.joinToString(" and ").ifBlank { "jobs" }} jobs open worldwide or to your region, " +
-                    "from ${RemoteBoards.boardNames}. Checked every ${Scheduler.INTERVAL_MINUTES} minutes on Wi-Fi and " +
+                    "from ${RemoteBoards.boardNames}. Checked ${everyText(RemoteBoards.UNLIMITED_MINUTES)} on Wi-Fi and " +
                     "hourly on mobile data; Jobicy allows one check an hour and Remotive four a day.",
                     style = MaterialTheme.typography.bodySmall, color = muted)
                 Text(status, style = MaterialTheme.typography.bodySmall)
@@ -654,7 +654,7 @@ fun BackgroundSetup(resumed: Int) {
             if (!battery) SetupItem("Android may pause checks to save battery. Allow the app to run in the background.") {
                 context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, app))
             }
-            if (!exact && Build.VERSION.SDK_INT >= 31) SetupItem("Checks may run later than every 10 minutes.") {
+            if (!exact && Build.VERSION.SDK_INT >= 31) SetupItem("Checks may run later than ${everyText(Scheduler.INTERVAL_MINUTES)}.") {
                 context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, app))
             }
         }
@@ -697,8 +697,8 @@ fun AddSearch(data: AppData, onAdded: (String) -> Unit) {
     OutlinedCard(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (data.searches.size >= Store.MAX_SEARCHES) {
-                Text("${Store.MAX_SEARCHES} searches is the most: LinkedIn gets one search every ${Scheduler.SPACING_MINUTES} " +
-                    "minutes, so each is checked every ${Scheduler.INTERVAL_MINUTES}. Remove one to add another.",
+                Text("${Store.MAX_SEARCHES} searches is the most: LinkedIn gets one search ${everyText(Scheduler.SPACING_MINUTES)}, " +
+                    "so each is checked ${everyText(Scheduler.INTERVAL_MINUTES)}. Remove one to add another.",
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 OutlinedTextField(keywords, { keywords = it; error = null }, Modifier.fillMaxWidth(),

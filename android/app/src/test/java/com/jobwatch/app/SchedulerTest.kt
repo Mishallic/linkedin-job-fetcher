@@ -124,13 +124,14 @@ class SchedulerTest {
         Store.update(context) { it.copy(remoteOn = false, sitesOn = false) }
         Checker.tick(context)
         var data = Store.load(context)
-        assertEquals("5 searches: the next one goes 2 minutes later", data.lastRun + 2 * 60_000,
+        assertEquals("5 searches: the next one goes a spacing later", data.lastRun + Scheduler.SPACING_MINUTES * 60_000,
             alarms.peekNextScheduledAlarm()!!.triggerAtTime)
 
         Store.update(context) { d -> d.copy(searches = d.searches.take(1)) }
         Scheduler.reschedule(context)
         data = Store.load(context)
-        assertEquals("one search: its next turn is 10 minutes after it was asked", data.searches[0].lastTry + 10 * 60_000,
+        assertEquals("one search: its next turn is an interval after it was asked",
+            data.searches[0].lastTry + Scheduler.INTERVAL_MINUTES * 60_000,
             alarms.peekNextScheduledAlarm()!!.triggerAtTime)
     }
 

@@ -90,3 +90,20 @@ LinkedIn delay.
 Install 1.13 and use it for a day, then open Delivery times and share the report. Expected:
 found to notified 0 for every job, and posted to found within about 10 minutes unless LinkedIn
 is late.
+
+## Follow-up: one LinkedIn request a minute (1.14)
+
+With 1.13 working as expected, the spacing between LinkedIn requests was halved to 1 minute, so each
+of the 5 searches comes round every 5 minutes. First, the slow-down pause, the email and WhatsApp
+gap and the remote boards' pace were given their own 10 minutes (they had shared the search
+interval), and the tests were rewritten in terms of the spacing and interval. The simulation gave
+1.13's times unchanged before the switch.
+
+| LinkedIn shows postings at once | 1.13 (2 min) | 1.14 (1 min) |
+| --- | --- | --- |
+| posted to notified, median / 90% / max | 5 / 9 / 9 min | 2 / 4 / 4 min |
+| largest LinkedIn delay with nothing missed | 4 min | 9 min |
+
+The cost is twice the requests to LinkedIn (60 an hour) and twice the wake-ups, close to how often
+Android lets an app wake a sleeping phone. Watch Recent checks for "asked to slow down" and for
+checks the phone ran late; if either becomes common, set `Scheduler.SPACING_MINUTES` back to 2.

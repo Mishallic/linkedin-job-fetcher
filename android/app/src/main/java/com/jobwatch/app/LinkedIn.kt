@@ -31,7 +31,7 @@ data class Search(
     val lastCheck: Long = Clock.now(),
     val found: Int = 0,
     val status: String = "Not checked yet",
-    /** When LinkedIn was last asked for this search (any page, any answer). Its next turn is 10 minutes later. */
+    /** When LinkedIn was last asked for this search (any page, any answer). Its next turn is [Scheduler.INTERVAL_MINUTES] minutes later. */
     val lastTry: Long = 0L,
     /** A check reading several pages of results: where its next page starts. 0 when none is under way. */
     val cursor: Int = 0,
@@ -59,7 +59,7 @@ object LinkedIn {
         "(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
 
     // Android can delay background work, so each check looks back to the previous one
-    // (plus an overlap) instead of a fixed 10 minutes. Jobs never fall into a gap.
+    // (plus an overlap) instead of a fixed interval. Jobs never fall into a gap.
     const val MIN_WINDOW_MINUTES = 15L
     const val OVERLAP_MINUTES = 5L
     const val MAX_WINDOW_HOURS = 24L
@@ -205,6 +205,9 @@ fun decodeEntities(text: String): String = ENTITY.replace(text) { match ->
 fun cleanText(html: String): String = decodeEntities(TAG.replace(html, " ")).replace(SPACES, " ").trim()
 
 private fun grab(text: String, pattern: Regex): String = pattern.find(text)?.let { cleanText(it.groupValues[1]) }.orEmpty()
+
+/** "every minute" or "every 5 minutes". */
+fun everyText(minutes: Long): String = if (minutes == 1L) "every minute" else "every $minutes minutes"
 
 fun timeText(ms: Long): String {
     if (ms <= 0) return "never"

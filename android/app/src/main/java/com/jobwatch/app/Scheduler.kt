@@ -11,8 +11,8 @@ import kotlin.concurrent.thread
 
 /**
  * Wakes the app with an alarm for each check ([Checker.tick]): at the next search's turn, and at
- * most every [SPACING_MINUTES] minutes, so LinkedIn gets one request per 2 minutes and each of up to
- * 5 searches is checked every [INTERVAL_MINUTES] minutes. Alarms (unlike scheduled jobs) still fire
+ * most every [SPACING_MINUTES] minute, so LinkedIn gets one request a minute at most and each of up to
+ * [Store.MAX_SEARCHES] searches is checked every [INTERVAL_MINUTES] minutes. Alarms (unlike scheduled jobs) still fire
  * when the phone is idle, and an app exempt from battery optimization may use the network then, so
  * checks keep their rhythm while the phone sits in a pocket.
  *
@@ -20,11 +20,11 @@ import kotlin.concurrent.thread
  * schedules a new one, so the app doesn't run at all until it's opened again.
  */
 object Scheduler {
-    /** Each search is checked this often, and so are the job boards without a stricter limit. */
-    const val INTERVAL_MINUTES = 10L
-
     /** LinkedIn gets at most one request per this many minutes, and the app wakes no more often. */
-    const val SPACING_MINUTES = 2L
+    const val SPACING_MINUTES = 1L
+
+    /** Each search is checked this often: one turn each for the most searches the app takes. */
+    const val INTERVAL_MINUTES = Store.MAX_SEARCHES * SPACING_MINUTES
 
     private fun prefs(context: Context) = context.getSharedPreferences("scheduler", Context.MODE_PRIVATE)
 

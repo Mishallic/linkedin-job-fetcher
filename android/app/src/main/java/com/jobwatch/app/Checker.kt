@@ -6,10 +6,10 @@ import kotlin.concurrent.thread
 
 /**
  * The checks, one "tick" at a time. A tick sends LinkedIn at most one request: the next page of
- * the search whose turn it is. LinkedIn requests are at least [Scheduler.SPACING_MINUTES] minutes
- * apart whatever starts the tick (the alarm, the refresh button, a new search), so with up to
- * [Store.MAX_SEARCHES] searches LinkedIn gets at most 5 requests every 10 minutes, and each search
- * is checked every [Scheduler.INTERVAL_MINUTES] minutes. A search with more new jobs than one page
+ * the search whose turn it is. LinkedIn requests are at least [Scheduler.SPACING_MINUTES] minute
+ * apart whatever starts the tick (the alarm, the refresh button, a new search), so each of up to
+ * [Store.MAX_SEARCHES] searches is checked every [Scheduler.INTERVAL_MINUTES] minutes, one turn after
+ * another, with LinkedIn asked at most once per spacing. A search with more new jobs than one page
  * holds reads one page per turn. A tick also reads the remote job boards and the job sites that are
  * due, side by side with LinkedIn: other sites, with limits of their own.
  *
@@ -22,6 +22,8 @@ object Checker {
     private const val TOLERANCE_MS = 5_000L // alarms and clocks are a little out; don't miss a turn over it
     private const val SPACING_MS = Scheduler.SPACING_MINUTES * 60_000
     private const val INTERVAL_MS = Scheduler.INTERVAL_MINUTES * 60_000
+    private const val PAUSE_MS = 10 * 60_000L // after a "slow down", background checks leave LinkedIn alone this long
+    private const val MESSAGE_GAP_MS = 10 * 60_000L // email and WhatsApp go at most this often
     private const val WAITING = "Waiting: LinkedIn asked to slow down"
     private val lock = ReentrantLock()
 
@@ -47,8 +49,8 @@ object Checker {
 
     /**
      * The search whose turn it is: one still reading its pages, or the one asked longest ago once
-     * its 10 minutes are up; [prefer] (a search just added) goes first when it's among them. With
-     * [anyway] (you tapped refresh), the one asked longest ago even before its 10 minutes are up.
+     * its interval is up; [prefer] (a search just added) goes first when it's among them. With
+     * [anyway] (you tapped refresh), the one asked longest ago even before its interval is up.
      */
     fun nextSearch(searches: List<Search>, now: Long, anyway: Boolean = false, prefer: String? = null): Search? {
         val due = searches.filter { it.cursor > 0 || now - minOf(it.lastTry, now) >= INTERVAL_MS - TOLERANCE_MS }
@@ -57,18 +59,18 @@ object Checker {
     }
 
     /**
-     * The soonest LinkedIn may be asked again: 2 minutes after the last request, and, unless [force],
+     * The soonest LinkedIn may be asked again: one spacing after the last request, and, unless [force],
      * not before a slow-down pause ends. Times saved under a clock that was later set back count as now.
      */
     fun linkedInReadyAt(data: AppData, now: Long, force: Boolean = false): Long {
         val spaced = minOf(data.lastLinkedInAt, now) + SPACING_MS
-        val paused = if (force) 0L else minOf(data.linkedInPausedUntil, now + INTERVAL_MS)
+        val paused = if (force) 0L else minOf(data.linkedInPausedUntil, now + PAUSE_MS)
         return maxOf(spaced, paused)
     }
 
     /**
      * When the next tick should run: the next search's turn (once LinkedIn may be asked) or the next
-     * job board read, whichever comes first, and never sooner than 2 minutes after the last tick.
+     * job board read, whichever comes first, and never sooner than one spacing after the last tick.
      */
     fun nextTickAt(context: Context, data: AppData, now: Long): Long {
         val linkedIn = data.searches.minOfOrNull { if (it.cursor > 0) 0L else minOf(it.lastTry, now) + INTERVAL_MS }
@@ -83,7 +85,7 @@ object Checker {
      * and the job boards that are due. Saves what's new, queues it for an alert, records the tick in
      * the history and sets the alarm for the next one. A background tick ([force] false) is skipped
      * while checks are off or another tick runs. A tick you asked for waits for a running one, runs
-     * with checks off and needn't wait out a slow-down pause, but still keeps LinkedIn's 2 minutes.
+     * with checks off and needn't wait out a slow-down pause, but still keeps LinkedIn's spacing.
      */
     fun tick(
         context: Context,
@@ -117,7 +119,7 @@ object Checker {
         val now = Clock.now()
         val ready = linkedInReadyAt(data, now, force)
         val search = if (now >= ready - TOLERANCE_MS) nextSearch(data.searches, now, anyway = force, prefer = prefer) else null
-        // Note the tick, and the request before making it, so the 2 minutes hold even if the phone stops this tick.
+        // Note the tick, and the request before making it, so the spacing holds even if the phone stops this tick.
         Store.update(context) { d ->
             d.copy(
                 rounds = (listOf(Round(now, trigger, dueAt = due)) + d.rounds).take(Store.KEEP_ROUNDS),
@@ -134,7 +136,7 @@ object Checker {
                 thread { boards = runCatching { RemoteBoards.check(context, force) } },
                 thread { sites = runCatching { JobSites.check(context, force) } },
             )
-            val paused = !force && now < minOf(data.linkedInPausedUntil, now + INTERVAL_MS) - TOLERANCE_MS
+            val paused = !force && now < minOf(data.linkedInPausedUntil, now + PAUSE_MS) - TOLERANCE_MS
             val turn = if (search != null) ask(search, data, now) else noRequest(data, now, ready, paused)
             reading.forEach { it.join() }
             val jobs = turn.jobs + boards.getOrNull()?.jobs.orEmpty() + sites.getOrNull()?.jobs.orEmpty()
@@ -201,7 +203,7 @@ object Checker {
             )
         } catch (e: SlowDownException) {
             // Leave LinkedIn alone for a while. The window and page stay where they were, so nothing is missed.
-            val until = now + INTERVAL_MS
+            val until = now + PAUSE_MS
             Turn(emptyList(), "$where: asked to slow down, LinkedIn left alone until ${timeText(until)}",
                 "LinkedIn asked to slow down. Trying again at ${timeText(until)}; nothing posted meanwhile is missed.",
                 save = { d ->
@@ -229,8 +231,8 @@ object Checker {
             "Every search was checked in the last ${Scheduler.INTERVAL_MINUTES} minutes.")
         paused -> Turn(emptyList(), "LinkedIn: left alone until ${timeText(ready)} after it asked to slow down",
             "LinkedIn asked to slow down. Trying again at ${timeText(ready)}.")
-        else -> Turn(emptyList(), "LinkedIn: next search at ${timeText(ready)}, one every ${Scheduler.SPACING_MINUTES} minutes",
-            "LinkedIn gets one search every ${Scheduler.SPACING_MINUTES} minutes. Next one at ${timeText(ready)}.")
+        else -> Turn(emptyList(), "LinkedIn: next search at ${timeText(ready)}, one ${everyText(Scheduler.SPACING_MINUTES)}",
+            "LinkedIn gets one search ${everyText(Scheduler.SPACING_MINUTES)}. Next one at ${timeText(ready)}.")
     }
 
     /**
@@ -243,7 +245,7 @@ object Checker {
         if (!messaging) return data.copy(alertQueue = emptyList()) to emptyList()
         val queued = (data.alertQueue + jobs.map { it.id }).distinct()
         if (queued.isEmpty()) return data to emptyList()
-        if (!immediate && now - minOf(data.lastAlertAt, now) < INTERVAL_MS - TOLERANCE_MS) {
+        if (!immediate && now - minOf(data.lastAlertAt, now) < MESSAGE_GAP_MS - TOLERANCE_MS) {
             return data.copy(alertQueue = queued) to emptyList()
         }
         val ids = queued.toHashSet()
