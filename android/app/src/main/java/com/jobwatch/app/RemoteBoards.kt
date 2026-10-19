@@ -32,7 +32,7 @@ import kotlin.concurrent.thread
 object RemoteBoards {
     const val LABEL = "Remote job boards"
     const val MOBILE_DATA_MINUTES = 60L
-    private const val UNLIMITED = Scheduler.INTERVAL_MINUTES // boards with no limit of their own: every 10 minutes
+    const val UNLIMITED_MINUTES = 10L // boards with no limit of their own: every 10 minutes, whatever LinkedIn's pace
     private const val LEGACY_WORK = "remote-boards" // 1.8 and earlier read the boards every 6 hours with WorkManager
     const val USER_AGENT = "Mozilla/5.0 (Linux; Android) JobWatch/1.13"
     private const val FIRST_CHECK_DAYS = 7L // the first check shows the past week's jobs
@@ -63,11 +63,11 @@ object RemoteBoards {
     class Board(val name: String, val gapMinutes: Long, val read: (Query) -> List<Listing>)
 
     val boards = listOf(
-        Board("We Work Remotely", UNLIMITED) { parseWeWorkRemotely(get("https://weworkremotely.com/remote-jobs.rss")) },
-        Board("Himalayas", UNLIMITED) { query ->
+        Board("We Work Remotely", UNLIMITED_MINUTES) { parseWeWorkRemotely(get("https://weworkremotely.com/remote-jobs.rss")) },
+        Board("Himalayas", UNLIMITED_MINUTES) { query ->
             query.positions.flatMap { parseHimalayas(get("https://himalayas.app/jobs/api/search?q=${encode(it)}&worldwide=true")) }
         },
-        Board("Remote OK", UNLIMITED) { parseRemoteOk(get("https://remoteok.com/api")) },
+        Board("Remote OK", UNLIMITED_MINUTES) { parseRemoteOk(get("https://remoteok.com/api")) },
         Board("Jobicy", 60) { parseJobicy(get("https://jobicy.com/api/v2/remote-jobs?count=100")) },
         Board("Remotive", 6 * 60) { parseRemotive(get("https://remotive.com/api/remote-jobs?limit=150")) },
         Board("Hacker News", 60) { query -> readHackerNews(query) }, // new posts trickle in; hourly is plenty
@@ -82,8 +82,8 @@ object RemoteBoards {
     }
 
     /**
-     * On mobile data, a board without a stricter limit waits 58 minutes, so that with checks at most
-     * every 2 minutes it's read about hourly rather than every 62 minutes.
+     * On mobile data, a board without a stricter limit waits an hour less one spacing, so that with
+     * checks at most one spacing apart it's read about hourly rather than a little over.
      */
     fun gapMinutes(board: Board, mobileData: Boolean): Long =
         if (mobileData) maxOf(board.gapMinutes, MOBILE_DATA_MINUTES - Scheduler.SPACING_MINUTES) else board.gapMinutes

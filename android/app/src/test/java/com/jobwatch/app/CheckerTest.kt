@@ -33,6 +33,8 @@ class CheckerTest {
     private fun data() = Store.load(context)
     private fun lastAsked() = data().searches.maxBy { it.lastTry }.label
     private fun minutesPass(minutes: Long) = minutesPass(context, minutes)
+    private val spacing = Scheduler.SPACING_MINUTES // between two LinkedIn requests
+    private val interval = Scheduler.INTERVAL_MINUTES // between a search's turns
 
     @Before
     fun setUp() {
@@ -67,12 +69,12 @@ class CheckerTest {
             asked += lastAsked()
             Checker.tick(context)
             Checker.tick(context, Checker.TRIGGER_REFRESH, force = true)
-            assertEquals("none again within 2 minutes, not even when you tap refresh", before + 1, linkedIn().size)
-            minutesPass(2)
+            assertEquals("none again within a spacing, not even when you tap refresh", before + 1, linkedIn().size)
+            minutesPass(spacing)
         }
         assertEquals("each search in turn", labels, asked)
 
-        // Ten minutes after the first search was asked, it's its turn again.
+        // One interval after the first search was asked, it's its turn again.
         Checker.tick(context)
         assertEquals(6, linkedIn().size)
         assertEquals(labels[0], lastAsked())
@@ -83,16 +85,16 @@ class CheckerTest {
         Store.update(context) { d -> d.copy(searches = d.searches.take(2)) }
         linkedInAnswers(200, shortPage)
         Checker.tick(context)
-        minutesPass(2)
+        minutesPass(spacing)
         Checker.tick(context)
-        minutesPass(2)
+        minutesPass(spacing)
         Checker.tick(context)
-        assertEquals("both searches were asked in the last 10 minutes: no request", 2, linkedIn().size)
+        assertEquals("both searches were asked within an interval: no request", 2, linkedIn().size)
 
         val now = System.currentTimeMillis()
         val first = data().searches.minBy { it.lastTry }
-        assertEquals("the next check is the first search's turn, 10 minutes after it was asked",
-            first.lastTry + 10 * 60_000, Checker.nextTickAt(context, data(), now))
+        assertEquals("the next check is the first search's turn, an interval after it was asked",
+            first.lastTry + interval * 60_000, Checker.nextTickAt(context, data(), now))
     }
 
     @Test
@@ -110,18 +112,18 @@ class CheckerTest {
         assertTrue(search.status, search.status.startsWith("Checking"))
         val began = search.checkStartedAt
 
-        minutesPass(2)
+        minutesPass(spacing)
         Checker.tick(context)
         assertEquals(20, data().searches.single().cursor)
 
-        minutesPass(2)
+        minutesPass(spacing)
         Checker.tick(context)
         search = data().searches.single()
         assertEquals("a short page ends the check", 0, search.cursor)
         assertEquals(listOf("start=0", "start=10", "start=20"), linkedIn().map { Regex("start=\\d+").find(it)!!.value })
         assertEquals(23, search.found)
         assertTrue(search.status, search.status.startsWith("Checked") && "23 new" in search.status)
-        assertEquals("the next check looks back to when this one began", began - 4 * 60_000, search.lastCheck)
+        assertEquals("the next check looks back to when this one began", began - 2 * spacing * 60_000, search.lastCheck)
     }
 
     @Test
@@ -133,9 +135,9 @@ class CheckerTest {
         assertTrue(data().limited)
         assertEquals("windows untouched, so nothing is missed", windows, data().searches.map { it.lastCheck })
 
-        minutesPass(2)
+        minutesPass(spacing)
         Checker.tick(context)
-        assertEquals("background checks leave LinkedIn alone for 10 minutes", 1, linkedIn().size)
+        assertEquals("background checks leave LinkedIn alone for 10 minutes after a slow-down", 1, linkedIn().size)
         assertEquals("and the alarm is set for the end of the pause", data().linkedInPausedUntil,
             Checker.nextTickAt(context, data(), System.currentTimeMillis()))
         Checker.tick(context, Checker.TRIGGER_REFRESH, force = true)
@@ -162,7 +164,7 @@ class CheckerTest {
         assertEquals("undo puts them back in place", before, data().jobs.map { it.id })
 
         Store.deleteJobs(context, doomed)
-        minutesPass(2)
+        minutesPass(spacing)
         assertEquals("a later check doesn't bring them back", emptyList<Job>(), Checker.tick(context).jobs)
         assertEquals(before - doomed, data().jobs.map { it.id })
     }
@@ -184,7 +186,7 @@ class CheckerTest {
         assertTrue(rounds[0].result, rounds[0].result.startsWith("LinkedIn: next search at"))
 
         linkedInAnswers(429)
-        minutesPass(2)
+        minutesPass(spacing)
         Checker.tick(context)
         assertTrue(data().rounds[0].result, "asked to slow down" in data().rounds[0].result)
 
@@ -199,7 +201,7 @@ class CheckerTest {
         Http.fake = { url -> requests += url; 200 to differentJobs(answers.incrementAndGet()) }
         repeat(3) {
             Checker.tick(context)
-            minutesPass(2)
+            minutesPass(spacing)
         }
         assertEquals(30, data().jobs.size)
         assertEquals("nothing queued", 0, data().alertQueue.size)
@@ -261,7 +263,7 @@ class CheckerTest {
         assertTrue(Store.addSearch(context, Search("python developer", "Dubai")))
         assertFalse("not twice", Store.addSearch(context, Search("python developer", "Dubai")))
 
-        minutesPass(2)
+        minutesPass(spacing)
         Checker.tick(context, Checker.TRIGGER_ADDED, force = true, prefer = "python developer @ Dubai")
         assertEquals("python developer @ Dubai", lastAsked())
     }

@@ -19,7 +19,7 @@ import java.net.URLDecoder
  * minutes and show in its search after a set delay, the alarm firing whenever it's due, and three
  * hours of checks in a moment. It measures what the app adds between LinkedIn showing a job and the
  * phone's notification, and holds the app to its budget: found at the job's search's next turn
- * (within 10 minutes), and announced by the check that found it.
+ * (within one interval), and announced by the check that found it.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [35])
@@ -124,15 +124,22 @@ class DeliveryTimeTest {
         val outcomes = run(3 * 60 + 30)
         report("LinkedIn shows jobs at once", outcomes)
         assertEquals("none missed", 0, outcomes.count { it.job == null })
-        assertTrue("each found within one turn (10 minutes) of LinkedIn showing it", outcomes.all { it.shownToFound!! <= 10 })
+        assertTrue("each found within one turn (an interval) of LinkedIn showing it",
+            outcomes.all { it.shownToFound!! <= Scheduler.INTERVAL_MINUTES })
         assertTrue("each announced by the check that found it", outcomes.all { it.foundToNotified == 0L })
     }
 
+    /**
+     * Each check looks back at least [LinkedIn.MIN_WINDOW_MINUTES], so a job LinkedIn shows late is
+     * still caught as long as its delay and the wait for its search's turn fit in that window: up to
+     * the window less one interval (a minute's margin for alarms that fire a little late).
+     */
     @Test
-    fun jobsLinkedInShowsUpToFiveMinutesLateAreNotMissed() {
-        postJobs(hours = 3, lag = 5)
+    fun jobsLinkedInShowsLateAreNotMissedWhileTheWindowCoversThem() {
+        val lag = LinkedIn.MIN_WINDOW_MINUTES - Scheduler.INTERVAL_MINUTES - 1
+        postJobs(hours = 3, lag = lag)
         val outcomes = run(3 * 60 + 30)
-        report("LinkedIn shows jobs 5 minutes late", outcomes)
+        report("LinkedIn shows jobs $lag minutes late", outcomes)
         assertEquals("none missed", 0, outcomes.count { it.job == null })
     }
 }

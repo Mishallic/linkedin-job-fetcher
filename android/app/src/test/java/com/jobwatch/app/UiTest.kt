@@ -113,7 +113,7 @@ class UiTest {
         assertEquals("Not checked yet", status())
 
         // At the 2-minute mark (what the alarm runs), it's first in line.
-        minutesPass(activity, 2)
+        minutesPass(activity, Scheduler.SPACING_MINUTES)
         Checker.tick(activity)
         assertTrue(status(), status().startsWith("Checked") || status().startsWith("Checking"))
         list.performScrollToNode(hasText("JOBS", substring = true))
@@ -180,7 +180,7 @@ class UiTest {
 
     @Test
     fun backgroundChecksCanBeStopped() {
-        compose.onNode(isToggleable() and hasText("Check every 10 minutes", substring = true)).performClick()
+        compose.onNode(isToggleable() and hasText("Check ${everyText(Scheduler.INTERVAL_MINUTES)}", substring = true)).performClick()
         compose.onNodeWithText("Off: nothing runs in the background", substring = true).assertIsDisplayed()
         assertFalse(Store.load(compose.activity).checksOn)
         assertEquals("alarm cancelled", 0L, Scheduler.nextCheckAt(compose.activity))
@@ -328,7 +328,7 @@ class UiTest {
         compose.waitUntil(5_000) { compose.onAllNodesWithText("Next one at", substring = true).fetchSemanticsNodes().isNotEmpty() }
 
         // Two minutes on, LinkedIn refuses: the card says so, and when it will try again.
-        minutesPass(activity, 2)
+        minutesPass(activity, Scheduler.SPACING_MINUTES)
         Http.fake = { url -> requested += url; 429 to "" }
         refresh()
         assertTrue(Store.load(activity).limited)
@@ -337,7 +337,7 @@ class UiTest {
 
         // Two minutes later a tap tries again without waiting out the pause, and once LinkedIn answers, all is normal.
         Http.fake = normal
-        minutesPass(activity, 2)
+        minutesPass(activity, Scheduler.SPACING_MINUTES)
         refresh()
         assertFalse(Store.load(activity).limited)
         compose.onNodeWithText("Last check", substring = true).assertIsDisplayed()

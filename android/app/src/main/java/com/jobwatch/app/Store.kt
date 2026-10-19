@@ -20,7 +20,7 @@ data class AppData(
     val remoteStatus: String = "",
     val boardChecks: Map<String, Long> = emptyMap(), // board name -> when it was last read
     val rounds: List<Round> = emptyList(), // the last checks, newest first
-    val lastLinkedInAt: Long = 0L, // the app's last request to LinkedIn; the next one is 2 minutes later at the soonest
+    val lastLinkedInAt: Long = 0L, // the app's last request to LinkedIn; the next one is a spacing later at the soonest
     val linkedInPausedUntil: Long = 0L, // after a "slow down", background checks leave LinkedIn alone until then
     val alertQueue: List<String> = emptyList(), // ids of new jobs waiting for the next alert
     val lastAlertAt: Long = 0L,
@@ -52,7 +52,7 @@ object Store {
     private const val KEEP_SEEN = 5000
     const val KEEP_ROUNDS = 100
 
-    /** LinkedIn gets one search every 2 minutes, so 5 searches are each checked every 10 minutes. */
+    /** With one LinkedIn search per spacing, each of this many searches gets a turn every [Scheduler.INTERVAL_MINUTES] minutes. */
     const val MAX_SEARCHES = 5
 
     // The searches you were using in the desktop app. Only used the very first time.
