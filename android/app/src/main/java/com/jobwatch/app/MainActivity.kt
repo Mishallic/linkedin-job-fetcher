@@ -409,7 +409,7 @@ fun MainList(
 fun ChecksCard(data: AppData, onChange: (Boolean) -> Unit) {
     val context = LocalContext.current
     var showHistory by rememberSaveable { mutableStateOf(false) }
-    val now = System.currentTimeMillis()
+    val now = Clock.now()
     val next = remember(data) { Scheduler.nextCheckAt(context) }
     val retry = Checker.linkedInReadyAt(data, now).let { if (it > now) it else next }
     val limited = data.checksOn && data.limited
@@ -444,7 +444,7 @@ fun ChecksCard(data: AppData, onChange: (Boolean) -> Unit) {
 /** The last checks, newest first: when each started, what started it, how long it took and what it found. */
 @Composable
 fun HistoryDialog(rounds: List<Round>, onClose: () -> Unit) {
-    val now = System.currentTimeMillis()
+    val now = Clock.now()
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     AlertDialog(
         onDismissRequest = onClose,

@@ -98,7 +98,7 @@ object Alerts {
         val config = AlertPrefs.load(context)
         if (!config.emailEnabled && !config.whatsappEnabled) return
         val results = send(config, jobs)
-        val time = timeText(System.currentTimeMillis())
+        val time = timeText(Clock.now())
         val sent = results.filterValues { it == null }.keys
         val parts = mutableListOf<String>()
         if (sent.isNotEmpty()) parts += "sent ${jobs.size} job(s) by ${sent.joinToString(" + ")} at $time"
@@ -127,7 +127,7 @@ object Alerts {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
-        NotificationManagerCompat.from(context).notify((System.currentTimeMillis() / 1000).toInt(), notification)
+        NotificationManagerCompat.from(context).notify((Clock.now() / 1000).toInt(), notification)
     }
 
     /** Send to every enabled channel. Returns channel -> error message, or null if it was sent. */

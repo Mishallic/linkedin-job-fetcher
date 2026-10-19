@@ -91,7 +91,7 @@ object Checker {
     private fun tickLocked(context: Context, trigger: String, force: Boolean, prefer: String?): Pair<TickResult, List<Job>> {
         val data = Store.load(context)
         if (!force && !data.checksOn) return TickResult(emptyList(), "Background checks are off.") to emptyList()
-        val now = System.currentTimeMillis()
+        val now = Clock.now()
         val ready = linkedInReadyAt(data, now, force)
         val search = if (now >= ready - TOLERANCE_MS) nextSearch(data.searches, now, anyway = force, prefer = prefer) else null
         // Note the tick, and the request before making it, so the 2 minutes hold even if the phone stops this tick.
@@ -230,7 +230,7 @@ object Checker {
     fun announce(context: Context, jobs: List<Job>, immediate: Boolean) {
         var due = emptyList<Job>()
         Store.update(context) { d ->
-            val (saved, now) = queue(d, jobs, System.currentTimeMillis(), immediate)
+            val (saved, now) = queue(d, jobs, Clock.now(), immediate)
             due = now
             saved
         }
@@ -238,5 +238,5 @@ object Checker {
     }
 
     private fun finish(rounds: List<Round>, startedAt: Long, note: String) =
-        rounds.map { if (it.startedAt == startedAt) it.copy(finishedAt = System.currentTimeMillis(), result = note) else it }
+        rounds.map { if (it.startedAt == startedAt) it.copy(finishedAt = Clock.now(), result = note) else it }
 }

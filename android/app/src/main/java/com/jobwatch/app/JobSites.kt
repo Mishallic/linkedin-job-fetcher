@@ -90,7 +90,7 @@ object JobSites {
     }
 
     private fun checkDue(context: Context, force: Boolean): Read {
-        val now = System.currentTimeMillis()
+        val now = Clock.now()
         val data = Store.load(context)
         val due = due(data, now, force)
         if (due.isEmpty()) return Read.NONE

@@ -26,7 +26,7 @@ data class Search(
     val location: String,
     // Jobs are covered up to this moment. Starting it at "now" means that if the first
     // check fails, the next one still looks back to when the search was added.
-    val lastCheck: Long = System.currentTimeMillis(),
+    val lastCheck: Long = Clock.now(),
     val found: Int = 0,
     val status: String = "Not checked yet",
     /** When LinkedIn was last asked for this search (any page, any answer). Its next turn is 10 minutes later. */

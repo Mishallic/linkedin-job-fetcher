@@ -226,7 +226,7 @@ object RemoteBoards {
     }
 
     private fun checkDue(context: Context, force: Boolean): Read {
-        val now = System.currentTimeMillis()
+        val now = Clock.now()
         val data = Store.load(context)
         val positions = positionsOf(data)
         if (!data.remoteOn || (!data.checksOn && !force) || positions.isEmpty()) return Read.NONE
@@ -281,7 +281,7 @@ object RemoteBoards {
      */
     private fun readHackerNews(query: Query): List<Listing> {
         val thread = hiringThread(query.context)
-        val from = maxOf(query.since - 60 * 60_000, System.currentTimeMillis() - FIRST_CHECK_DAYS * DAY_MS) / 1000
+        val from = maxOf(query.since - 60 * 60_000, Clock.now() - FIRST_CHECK_DAYS * DAY_MS) / 1000
         return parseHackerNews(get("$HN_SEARCH?tags=comment,story_$thread&hitsPerPage=1000&numericFilters=created_at_i>$from"),
             thread, query.positions)
     }
@@ -289,7 +289,7 @@ object RemoteBoards {
     /** This month's "Who is hiring?" thread. It changes once a month, so it's looked up at most once a day. */
     private fun hiringThread(context: Context): String {
         val prefs = context.getSharedPreferences("hackernews", Context.MODE_PRIVATE)
-        val now = System.currentTimeMillis()
+        val now = Clock.now()
         prefs.getString("thread", null)?.let { if (now - prefs.getLong("lookedUp", 0L) in 0 until DAY_MS) return it }
         val thread = parseHiringThread(get("$HN_SEARCH?tags=story,author_whoishiring&hitsPerPage=3"))
             ?: throw IllegalStateException("no \"Who is hiring?\" thread")

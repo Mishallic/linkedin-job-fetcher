@@ -177,7 +177,7 @@ object Store {
         return AppData(
             searches = List(searches.length()) { i ->
                 val o = searches.getJSONObject(i)
-                Search(o.getString("keywords"), o.optString("location"), o.optLong("lastCheck", System.currentTimeMillis()),
+                Search(o.getString("keywords"), o.optString("location"), o.optLong("lastCheck", Clock.now()),
                     o.optInt("found"), o.optString("status", "Not checked yet"), lastTry = o.optLong("lastTry"),
                     cursor = o.optInt("cursor"), checkStartedAt = o.optLong("checkStartedAt"), checkNew = o.optInt("checkNew"),
                     lastPageIds = o.optJSONArray("lastPageIds").strings())
