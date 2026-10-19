@@ -1,5 +1,7 @@
 # LinkedIn Job Fetcher
 
+[![Android](https://github.com/Mishallic/linkedin-job-fetcher/actions/workflows/android.yml/badge.svg)](https://github.com/Mishallic/linkedin-job-fetcher/actions/workflows/android.yml)
+
 Watches your LinkedIn job searches and tells you about new and reposted jobs soon after
 they're posted. It uses LinkedIn's public, logged-out job search, so it needs no LinkedIn
 account or API key.
@@ -30,13 +32,20 @@ after its last one, so with 5 searches, the most Job Watch takes, LinkedIn gets 
 every 10 minutes rather than a burst of them; with fewer, the app sleeps until the next turn.
 A search with more new jobs than one page holds reads one page per turn. If LinkedIn asks to
 slow down, background checks leave it alone for 10 minutes; the refresh button can try again
-after 2. New jobs are announced at most every 10 minutes, all together, and a check you ask for
-announces at once. Opening the app doesn't check again; the refresh button checks the next
-search at once, or says when it goes.
+after 2. The phone is told about new jobs by the check that finds them; email and WhatsApp
+go at most every 10 minutes, all together, or at once for a check you ask for. Opening the app
+doesn't check again; the refresh button checks the next search at once, or says when it goes.
 
 **Recent checks**, under the switch, lists the last 100 checks: when each started, what
 started it (the alarm, the refresh button, a new search, opening the app), how long it took
-and what it found. A check the phone stopped before it finished shows as such.
+and what it found. A check the phone stopped before it finished shows as such, and so does
+one the phone ran a minute or more late.
+
+**Delivery times**, next to it, shows how long the last day's LinkedIn jobs took from being
+posted to being found, and from being found to the notification: the median and the time 9 in
+10 jobs were within, and each job's own times. **Share** sends it all as text. How these
+measures were used to find why jobs came late is written up in
+[docs/investigations/2026-10-19-late-notifications.md](docs/investigations/2026-10-19-late-notifications.md).
 
 **New, read and deleted:** a filled dot marks a new job, an empty circle a read one. Tap the
 dot to switch it, or open the job to mark it read. Long-press a job to select several, then
@@ -75,10 +84,13 @@ each. A job already found on LinkedIn isn't announced again from a job site.
 ```
 cd android
 ./gradlew assembleRelease        # app/build/outputs/apk/release/app-release.apk
-./gradlew testReleaseUnitTest    # unit and Robolectric UI tests; no network needed
+./gradlew testReleaseUnitTest    # unit, simulation and Robolectric UI tests; no network needed
 ```
 
 `local.properties` (git-ignored) must point at the SDK: `sdk.dir=C\:\\path\\to\\Android\\Sdk`.
+GitHub Actions runs the same tests and the release build on every push and pull request.
+`LIVE_LINKEDIN=1 ./gradlew testReleaseUnitTest --tests "*liveFetchFromLinkedIn"` checks, with one
+real request, that LinkedIn's results page still reads.
 Release builds are signed with the building machine's debug key, so an update installs over
 an earlier version only when both were built on the same machine.
 
