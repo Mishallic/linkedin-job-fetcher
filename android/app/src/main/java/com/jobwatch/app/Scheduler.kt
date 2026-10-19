@@ -83,11 +83,12 @@ class CheckReceiver : BroadcastReceiver() {
             Scheduler.stop(app)
             return
         }
+        val due = Scheduler.nextCheckAt(app) // when this alarm was set for, to see how late the phone ran it
         Scheduler.scheduleNext(app) // keep the chain going whatever happens below; the check then sets the exact time
         val pending = goAsync()
         thread {
             try {
-                Checker.tick(app, Checker.TRIGGER_ALARM)
+                Checker.tick(app, Checker.TRIGGER_ALARM, due = due)
             } finally {
                 pending.finish()
             }

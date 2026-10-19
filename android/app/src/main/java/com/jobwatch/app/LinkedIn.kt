@@ -19,6 +19,8 @@ data class Job(
     val foundAt: Long = 0L,
     val isNew: Boolean = false,
     val source: String = "LinkedIn", // the site that published it; remote boards require naming them
+    val postedAt: Long = 0L, // when it was posted, as its source tells it (LinkedIn: to the minute); 0 = unknown
+    val notifiedAt: Long = 0L, // when the phone was told about it; 0 = not (yet)
 )
 
 data class Search(
@@ -70,9 +72,28 @@ object LinkedIn {
     private val COMPANY = Regex("class=\"base-search-card__subtitle\"[^>]*>([\\s\\S]*?)</h4>")
     private val LOCATION = Regex("class=\"job-search-card__location\"[^>]*>([\\s\\S]*?)</span>")
     private val POSTED = Regex("<time[^>]*datetime=\"([^\"]*)\"")
+    private val AGE = Regex("<time[^>]*>\\s*([^<]*?)\\s*</time>")
+    private val AGO = Regex("(\\d+)\\s+(second|minute|hour|day|week|month)s?\\s+ago", RegexOption.IGNORE_CASE)
 
-    fun parse(html: String): List<Job> = html.split(CARD_START).drop(1).mapNotNull { card ->
+    /** Minutes since a job was posted, from LinkedIn's "5 minutes ago" or "2 hours ago"; "Just now" is 0. */
+    fun ageMinutes(text: String): Long? {
+        if (text.trim().equals("just now", ignoreCase = true)) return 0
+        val match = AGO.find(text) ?: return null
+        val n = match.groupValues[1].toLong()
+        return when (match.groupValues[2].lowercase()) {
+            "second" -> 0
+            "minute" -> n
+            "hour" -> n * 60
+            "day" -> n * 60 * 24
+            "week" -> n * 60 * 24 * 7
+            else -> n * 60 * 24 * 30
+        }
+    }
+
+    /** The jobs on a results page. [now] is when it was read: "5 minutes ago" is counted back from it. */
+    fun parse(html: String, now: Long = Clock.now()): List<Job> = html.split(CARD_START).drop(1).mapNotNull { card ->
         val id = ID.find(card)?.value ?: return@mapNotNull null
+        val age = AGE.find(card)?.groupValues?.get(1)?.let(::ageMinutes)
         Job(
             id = id,
             title = grab(card, TITLE),
@@ -80,6 +101,7 @@ object LinkedIn {
             location = grab(card, LOCATION),
             posted = POSTED.find(card)?.groupValues?.get(1).orEmpty(),
             url = "$JOB_URL$id/",
+            postedAt = age?.let { now - it * 60_000 } ?: 0L,
         )
     }
 

@@ -77,18 +77,27 @@ object Checker {
      * while checks are off or another tick runs. A tick you asked for waits for a running one, runs
      * with checks off and needn't wait out a slow-down pause, but still keeps LinkedIn's 2 minutes.
      */
-    fun tick(context: Context, trigger: String = TRIGGER_ALARM, force: Boolean = false, prefer: String? = null): TickResult {
+    fun tick(
+        context: Context,
+        trigger: String = TRIGGER_ALARM,
+        force: Boolean = false,
+        prefer: String? = null,
+        due: Long = 0L, // when the alarm that started it was due, to see how late the phone ran it
+    ): TickResult {
         if (force) lock.lock() else if (!lock.tryLock()) return TickResult(emptyList(), "A check is already running.")
         val (result, announce) = try {
-            tickLocked(context, trigger, force, prefer)
+            tickLocked(context, trigger, force, prefer, due)
         } finally {
             lock.unlock()
         }
-        if (announce.isNotEmpty()) runCatching { Alerts.deliver(context, announce) } // email can be slow: not under the lock
+        // Email can be slow, so not under the lock.
+        if (announce.isNotEmpty() && runCatching { Alerts.deliver(context, announce) }.getOrDefault(false)) {
+            Store.markNotified(context, announce.mapTo(HashSet()) { it.id }, Clock.now())
+        }
         return result
     }
 
-    private fun tickLocked(context: Context, trigger: String, force: Boolean, prefer: String?): Pair<TickResult, List<Job>> {
+    private fun tickLocked(context: Context, trigger: String, force: Boolean, prefer: String?, due: Long): Pair<TickResult, List<Job>> {
         val data = Store.load(context)
         if (!force && !data.checksOn) return TickResult(emptyList(), "Background checks are off.") to emptyList()
         val now = Clock.now()
@@ -97,7 +106,7 @@ object Checker {
         // Note the tick, and the request before making it, so the 2 minutes hold even if the phone stops this tick.
         Store.update(context) { d ->
             d.copy(
-                rounds = (listOf(Round(now, trigger)) + d.rounds).take(Store.KEEP_ROUNDS),
+                rounds = (listOf(Round(now, trigger, dueAt = due)) + d.rounds).take(Store.KEEP_ROUNDS),
                 lastRun = now,
                 lastLinkedInAt = if (search != null) now else d.lastLinkedInAt,
                 searches = d.searches.map { if (it.label == search?.label) it.copy(lastTry = now) else it },
@@ -234,7 +243,9 @@ object Checker {
             due = now
             saved
         }
-        if (due.isNotEmpty()) runCatching { Alerts.deliver(context, due) }
+        if (due.isNotEmpty() && runCatching { Alerts.deliver(context, due) }.getOrDefault(false)) {
+            Store.markNotified(context, due.mapTo(HashSet()) { it.id }, Clock.now())
+        }
     }
 
     private fun finish(rounds: List<Round>, startedAt: Long, note: String) =

@@ -260,7 +260,7 @@ object RemoteBoards {
             newSeen += listOf(listing.id, duplicate)
             val posted = if (listing.postedAt > 0) Instant.ofEpochMilli(listing.postedAt).atOffset(ZoneOffset.UTC).toLocalDate().toString() else ""
             fresh += Job(listing.id, title, company, listing.where.ifBlank { "Remote" }, posted, listing.url,
-                search = LABEL, foundAt = now, isNew = true, source = listing.source)
+                search = LABEL, foundAt = now, isNew = true, source = listing.source, postedAt = listing.postedAt)
         }
 
         val status = "Checked ${timeText(now)}: ${fresh.size} new" +

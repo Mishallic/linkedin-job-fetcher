@@ -1,5 +1,7 @@
 package com.jobwatch.app
 
+import android.Manifest
+import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -10,6 +12,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
@@ -215,6 +218,19 @@ class CheckerTest {
         minutesPass(2)
         Checker.tick(context, Checker.TRIGGER_REFRESH, force = true)
         assertEquals("a check you ask for announces at once", 0, queued())
+    }
+
+    @Test
+    fun eachJobsPostedFoundAndNotifiedTimesAreRecorded() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        linkedInAnswers(200, shortPage)
+        val due = System.currentTimeMillis() - 90_000
+        Checker.tick(context, Checker.TRIGGER_ALARM, due = due)
+        val jobs = data().jobs
+        assertEquals(3, jobs.size)
+        assertTrue("posted, counted back from LinkedIn's \"hours ago\"", jobs.all { it.postedAt in 1 until it.foundAt })
+        assertTrue("the phone was told, and when", jobs.all { it.notifiedAt >= it.foundAt })
+        assertEquals("the check notes when its alarm was due", due, data().rounds[0].dueAt)
     }
 
     @Test

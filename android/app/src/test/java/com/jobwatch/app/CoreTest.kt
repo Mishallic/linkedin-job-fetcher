@@ -28,6 +28,21 @@ class CoreTest {
     }
 
     @Test
+    fun aJobsPostingTimeIsCountedBackFromLinkedInsMinutesAgo() {
+        assertEquals(5L, LinkedIn.ageMinutes("5 minutes ago"))
+        assertEquals(1L, LinkedIn.ageMinutes(" 1 minute ago "))
+        assertEquals(120L, LinkedIn.ageMinutes("2 hours ago"))
+        assertEquals(3L * 24 * 60, LinkedIn.ageMinutes("3 days ago"))
+        assertEquals(0L, LinkedIn.ageMinutes("Just now"))
+        assertEquals(null, LinkedIn.ageMinutes("Be an early applicant"))
+
+        val readAt = 1_790_000_000_000L
+        val first = LinkedIn.parse(sample, readAt).first() // its card says "22 hours ago"
+        assertEquals(readAt - 22 * 60 * 60_000, first.postedAt)
+        assertEquals("not known until the phone is told", 0L, first.notifiedAt)
+    }
+
+    @Test
     fun emptyPageHasNoJobs() {
         assertTrue(LinkedIn.parse("").isEmpty())
         assertTrue(LinkedIn.parse("<li>nothing here</li>").isEmpty())

@@ -409,6 +409,7 @@ fun MainList(
 fun ChecksCard(data: AppData, onChange: (Boolean) -> Unit) {
     val context = LocalContext.current
     var showHistory by rememberSaveable { mutableStateOf(false) }
+    var showDelivery by rememberSaveable { mutableStateOf(false) }
     val now = Clock.now()
     val next = remember(data) { Scheduler.nextCheckAt(context) }
     val retry = Checker.linkedInReadyAt(data, now).let { if (it > now) it else next }
@@ -433,12 +434,14 @@ fun ChecksCard(data: AppData, onChange: (Boolean) -> Unit) {
                 }
                 Switch(checked = data.checksOn, onCheckedChange = null)
             }
-            TextButton(onClick = { showHistory = true }, modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)) {
-                Text("Recent checks")
+            Row(Modifier.padding(start = 4.dp, bottom = 2.dp)) {
+                TextButton(onClick = { showHistory = true }) { Text("Recent checks") }
+                TextButton(onClick = { showDelivery = true }) { Text("Delivery times") }
             }
         }
     }
     if (showHistory) HistoryDialog(data.rounds, onClose = { showHistory = false })
+    if (showDelivery) DeliveryDialog(data.jobs, onClose = { showDelivery = false })
 }
 
 /** The last checks, newest first: when each started, what started it, how long it took and what it found. */
@@ -456,7 +459,8 @@ fun HistoryDialog(rounds: List<Round>, onClose: () -> Unit) {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     items(rounds, key = { it.startedAt }) { round ->
                         val (line, warn) = when {
-                            round.finishedAt > 0 -> "${round.result} · took ${durationText(round.finishedAt - round.startedAt)}" to false
+                            round.finishedAt > 0 -> "${round.result} · took ${durationText(round.finishedAt - round.startedAt)}" +
+                                lateText(round) to false
                             now - round.startedAt < 3 * 60_000 -> "Running…" to false
                             else -> "Did not finish: the phone stopped the app during this check" to true
                         }
@@ -469,6 +473,49 @@ fun HistoryDialog(rounds: List<Round>, onClose: () -> Unit) {
                     }
                 }
             }
+        },
+        confirmButton = { TextButton(onClick = onClose) { Text("OK") } },
+    )
+}
+
+/** " · ran 3 min late" when the phone ran an alarm's check a minute or more after it was due. */
+fun lateText(round: Round): String {
+    val late = round.startedAt - round.dueAt
+    return if (round.dueAt > 0 && late >= 60_000) " · ran ${durationText(late)} late" else ""
+}
+
+/** How long LinkedIn's jobs took from being posted to the notification, stage by stage, with a way to share it. */
+@Composable
+fun DeliveryDialog(jobs: List<Job>, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val times = remember(jobs) { Delivery.recent(jobs, Clock.now()) }
+    val muted = MaterialTheme.colorScheme.onSurfaceVariant
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Delivery times") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Delivery.summary(times).forEachIndexed { i, line ->
+                            Text(line, style = if (i == 0) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+                items(times, key = { it.job.id }) { t ->
+                    Column {
+                        Text("${t.job.title} · ${t.job.company}", style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(Delivery.line(t), style = MaterialTheme.typography.bodySmall, color = muted)
+                    }
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, Delivery.report(times))
+                context.startActivity(Intent.createChooser(send, "Share delivery times"))
+            }) { Text("Share") }
         },
         confirmButton = { TextButton(onClick = onClose) { Text("OK") } },
     )

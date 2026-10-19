@@ -276,6 +276,15 @@ class UiTest {
     }
 
     @Test
+    fun deliveryTimesShowEachStageOfTheJobsJourney() {
+        firstCheckDone()
+        compose.onNodeWithText("Delivery times").performClick()
+        compose.onNodeWithText("10 LinkedIn jobs found in the last 24 hours.").assertIsDisplayed()
+        compose.onNodeWithText("Posted to found", substring = true).assertIsDisplayed()
+        screenshot("14-delivery-times", ShadowDialog.getLatestDialog().window!!.decorView)
+    }
+
+    @Test
     fun jobSitesCardTakesAJoobleKey() {
         val activity = compose.activity
         val list = compose.onNode(hasScrollToIndexAction())
