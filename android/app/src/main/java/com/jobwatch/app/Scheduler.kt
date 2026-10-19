@@ -21,7 +21,7 @@ import kotlin.concurrent.thread
  */
 object Scheduler {
     /** LinkedIn gets at most one request per this many minutes, and the app wakes no more often. */
-    const val SPACING_MINUTES = 2L
+    const val SPACING_MINUTES = 1L
 
     /** Each search is checked this often: one turn each for the most searches the app takes. */
     const val INTERVAL_MINUTES = Store.MAX_SEARCHES * SPACING_MINUTES
