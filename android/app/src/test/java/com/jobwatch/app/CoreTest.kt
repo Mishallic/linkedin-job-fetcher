@@ -133,15 +133,16 @@ class CoreTest {
         assertEquals("+971501234567", AlertConfig(whatsappPhone = " +971 50 123 4567 ").trimmed().whatsappPhone)
     }
 
-    /** Talks to LinkedIn for real; run with LIVE_LINKEDIN=1. */
+    /** Talks to LinkedIn for real (one request); run with LIVE_LINKEDIN=1. Checks the page's format still reads. */
     @Test
     fun liveFetchFromLinkedIn() {
         assumeTrue(System.getenv("LIVE_LINKEDIN") == "1")
         val now = System.currentTimeMillis()
-        val jobs = LinkedIn.fetchPage(Search("data analyst", "Saudi Arabia", lastCheck = now - 60 * 60_000),
-            LinkedIn.windowSeconds(now - 60 * 60_000, now), 0).orEmpty()
-        println("live: ${jobs.size} jobs in the last hour, e.g. ${jobs.firstOrNull()}")
+        val jobs = LinkedIn.fetchPage(Search("data analyst", "Saudi Arabia"), 6 * 60 * 60, 0).orEmpty()
+        println("live: ${jobs.size} jobs in the last 6 hours; posted minutes ago: ${jobs.map { (now - it.postedAt) / 60_000 }}")
+        assertTrue("some jobs to check", jobs.isNotEmpty())
         assertEquals(jobs.size, jobs.map { it.id }.toSet().size)
         assertTrue(jobs.all { it.url.startsWith("https://www.linkedin.com/jobs/view/") })
+        assertTrue("every card's \"... ago\" read as a posting time", jobs.all { it.postedAt in (now - 7 * 60 * 60_000)..now })
     }
 }

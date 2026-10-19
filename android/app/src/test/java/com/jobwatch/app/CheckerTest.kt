@@ -193,7 +193,23 @@ class CheckerTest {
     }
 
     @Test
-    fun alertsGoOutAtMostEveryTenMinutesAllTogether() {
+    fun withoutEmailOrWhatsAppNothingWaitsAndThePhoneIsToldAtOnce() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        val answers = AtomicInteger()
+        Http.fake = { url -> requests += url; 200 to differentJobs(answers.incrementAndGet()) }
+        repeat(3) {
+            Checker.tick(context)
+            minutesPass(2)
+        }
+        assertEquals(30, data().jobs.size)
+        assertEquals("nothing queued", 0, data().alertQueue.size)
+        assertTrue("every job told to the phone by the check that found it", data().jobs.all { it.notifiedAt in it.foundAt..it.foundAt + 1_000 })
+    }
+
+    @Test
+    fun emailAndWhatsAppGoAtMostEveryTenMinutesAllTogether() {
+        shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+        AlertPrefs.save(context, AlertConfig(whatsappEnabled = true, whatsappPhone = "+962790000000", whatsappKey = "123456"))
         val answers = AtomicInteger()
         Http.fake = { url -> requests += url; 200 to differentJobs(answers.incrementAndGet()) }
         fun queued() = data().alertQueue.size
@@ -204,7 +220,8 @@ class CheckerTest {
 
         minutesPass(2)
         Checker.tick(context)
-        assertEquals("later ones wait", 10, queued())
+        assertEquals("later ones wait for the next message", 10, queued())
+        assertTrue("while the phone is told straight away", data().jobs.all { it.notifiedAt > 0 })
         minutesPass(2)
         Checker.tick(context)
         assertEquals(20, queued())
