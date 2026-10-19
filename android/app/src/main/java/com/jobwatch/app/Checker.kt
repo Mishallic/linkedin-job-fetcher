@@ -14,8 +14,9 @@ import kotlin.concurrent.thread
  * due, side by side with LinkedIn: other sites, with limits of their own.
  *
  * Every tick goes into the history ([AppData.rounds]) when it starts and again when it ends, so one
- * the phone stopped half-way shows as unfinished. New jobs are announced at most every 10 minutes,
- * all together, so a busy stretch brings one alert rather than five.
+ * the phone stopped half-way shows as unfinished. The phone is told about new jobs by the check that
+ * finds them; email and WhatsApp go at most every 10 minutes, all together, so a busy stretch brings
+ * one message rather than five.
  */
 object Checker {
     private const val TOLERANCE_MS = 5_000L // alarms and clocks are a little out; don't miss a turn over it
@@ -33,6 +34,13 @@ object Checker {
 
     /** What a tick found, and a line about it for the screen. */
     class TickResult(val jobs: List<Job>, val message: String)
+
+    /** Who to tell about new jobs now: the phone (every new job, at once) and email/WhatsApp (when their turn has come). */
+    private class Announce(val phone: List<Job>, val messages: List<Job>) {
+        companion object {
+            val NONE = Announce(emptyList(), emptyList())
+        }
+    }
 
     /** The LinkedIn part of a tick: the new jobs, lines for the history and the screen, and what to save. */
     private class Turn(val jobs: List<Job>, val note: String, val message: String, val save: (AppData) -> AppData = { it })
@@ -77,33 +85,48 @@ object Checker {
      * while checks are off or another tick runs. A tick you asked for waits for a running one, runs
      * with checks off and needn't wait out a slow-down pause, but still keeps LinkedIn's 2 minutes.
      */
-    fun tick(context: Context, trigger: String = TRIGGER_ALARM, force: Boolean = false, prefer: String? = null): TickResult {
+    fun tick(
+        context: Context,
+        trigger: String = TRIGGER_ALARM,
+        force: Boolean = false,
+        prefer: String? = null,
+        due: Long = 0L, // when the alarm that started it was due, to see how late the phone ran it
+    ): TickResult {
         if (force) lock.lock() else if (!lock.tryLock()) return TickResult(emptyList(), "A check is already running.")
         val (result, announce) = try {
-            tickLocked(context, trigger, force, prefer)
+            tickLocked(context, trigger, force, prefer, due)
         } finally {
             lock.unlock()
         }
-        if (announce.isNotEmpty()) runCatching { Alerts.deliver(context, announce) } // email can be slow: not under the lock
+        tell(context, announce) // not under the lock: email can take a while
         return result
     }
 
-    private fun tickLocked(context: Context, trigger: String, force: Boolean, prefer: String?): Pair<TickResult, List<Job>> {
+    /** Tell the phone at once, and email/WhatsApp what's due; note when the phone was told. */
+    private fun tell(context: Context, announce: Announce) {
+        if (announce.phone.isNotEmpty() && runCatching { Alerts.notify(context, announce.phone) }.getOrDefault(false)) {
+            Store.markNotified(context, announce.phone.mapTo(HashSet()) { it.id }, Clock.now())
+        }
+        if (announce.messages.isNotEmpty()) runCatching { Alerts.sendExternal(context, announce.messages) }
+    }
+
+    private fun tickLocked(context: Context, trigger: String, force: Boolean, prefer: String?, due: Long): Pair<TickResult, Announce> {
         val data = Store.load(context)
-        if (!force && !data.checksOn) return TickResult(emptyList(), "Background checks are off.") to emptyList()
-        val now = System.currentTimeMillis()
+        if (!force && !data.checksOn) return TickResult(emptyList(), "Background checks are off.") to Announce.NONE
+        val messaging = AlertPrefs.load(context).let { it.emailEnabled || it.whatsappEnabled }
+        val now = Clock.now()
         val ready = linkedInReadyAt(data, now, force)
         val search = if (now >= ready - TOLERANCE_MS) nextSearch(data.searches, now, anyway = force, prefer = prefer) else null
         // Note the tick, and the request before making it, so the 2 minutes hold even if the phone stops this tick.
         Store.update(context) { d ->
             d.copy(
-                rounds = (listOf(Round(now, trigger)) + d.rounds).take(Store.KEEP_ROUNDS),
+                rounds = (listOf(Round(now, trigger, dueAt = due)) + d.rounds).take(Store.KEEP_ROUNDS),
                 lastRun = now,
                 lastLinkedInAt = if (search != null) now else d.lastLinkedInAt,
                 searches = d.searches.map { if (it.label == search?.label) it.copy(lastTry = now) else it },
             )
         }
-        var announce = emptyList<Job>()
+        var announce = Announce.NONE
         val result = try {
             var boards = Result.success(RemoteBoards.Read.NONE)
             var sites = Result.success(JobSites.Read.NONE)
@@ -119,8 +142,8 @@ object Checker {
             val sitesNote = sites.fold({ it.note }, { "Job sites failed: ${it.message ?: it.javaClass.simpleName}" })
             val note = listOfNotNull(turn.note, boardsNote, sitesNote).joinToString(" · ")
             Store.update(context) { d ->
-                val (queued, due) = queue(turn.save(d), jobs, now, immediate = force)
-                announce = due
+                val (queued, messages) = queue(turn.save(d), jobs, now, immediate = force, messaging = messaging)
+                announce = Announce(jobs, messages)
                 queued.copy(rounds = finish(queued.rounds, now, note))
             }
             TickResult(jobs, if (jobs.isNotEmpty()) Messages.headline(jobs) else turn.message)
@@ -211,11 +234,13 @@ object Checker {
     }
 
     /**
-     * Queue [jobs] for an alert. All that's queued goes out together once 10 minutes have passed
-     * since the last alert, or straight away when [immediate] (a check you asked for). Returns the
-     * new state and the jobs to announce now.
+     * Queue [jobs] for email and WhatsApp. All that's queued goes out together once 10 minutes have
+     * passed since the last message, or straight away when [immediate] (a check you asked for).
+     * Nothing is queued while neither is turned on ([messaging]). Returns the new state and the jobs
+     * to send now.
      */
-    private fun queue(data: AppData, jobs: List<Job>, now: Long, immediate: Boolean): Pair<AppData, List<Job>> {
+    private fun queue(data: AppData, jobs: List<Job>, now: Long, immediate: Boolean, messaging: Boolean): Pair<AppData, List<Job>> {
+        if (!messaging) return data.copy(alertQueue = emptyList()) to emptyList()
         val queued = (data.alertQueue + jobs.map { it.id }).distinct()
         if (queued.isEmpty()) return data to emptyList()
         if (!immediate && now - minOf(data.lastAlertAt, now) < INTERVAL_MS - TOLERANCE_MS) {
@@ -226,17 +251,18 @@ object Checker {
         return data.copy(alertQueue = emptyList(), lastAlertAt = if (due.isEmpty()) data.lastAlertAt else now) to due
     }
 
-    /** Announce [jobs] found outside a tick (the boards just turned on), through the same queue. */
+    /** Announce [jobs] found outside a tick (a source just turned on): the phone at once, messages through the queue. */
     fun announce(context: Context, jobs: List<Job>, immediate: Boolean) {
-        var due = emptyList<Job>()
+        val messaging = AlertPrefs.load(context).let { it.emailEnabled || it.whatsappEnabled }
+        var messages = emptyList<Job>()
         Store.update(context) { d ->
-            val (saved, now) = queue(d, jobs, System.currentTimeMillis(), immediate)
-            due = now
+            val (saved, due) = queue(d, jobs, Clock.now(), immediate, messaging)
+            messages = due
             saved
         }
-        if (due.isNotEmpty()) runCatching { Alerts.deliver(context, due) }
+        tell(context, Announce(jobs, messages))
     }
 
     private fun finish(rounds: List<Round>, startedAt: Long, note: String) =
-        rounds.map { if (it.startedAt == startedAt) it.copy(finishedAt = System.currentTimeMillis(), result = note) else it }
+        rounds.map { if (it.startedAt == startedAt) it.copy(finishedAt = Clock.now(), result = note) else it }
 }

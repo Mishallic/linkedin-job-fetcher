@@ -34,7 +34,7 @@ object RemoteBoards {
     const val MOBILE_DATA_MINUTES = 60L
     private const val UNLIMITED = Scheduler.INTERVAL_MINUTES // boards with no limit of their own: every 10 minutes
     private const val LEGACY_WORK = "remote-boards" // 1.8 and earlier read the boards every 6 hours with WorkManager
-    const val USER_AGENT = "Mozilla/5.0 (Linux; Android) JobWatch/1.12"
+    const val USER_AGENT = "Mozilla/5.0 (Linux; Android) JobWatch/1.13"
     private const val FIRST_CHECK_DAYS = 7L // the first check shows the past week's jobs
     private const val MAX_AGE_DAYS = 14L
     private const val DAY_MS = 86_400_000L
@@ -226,7 +226,7 @@ object RemoteBoards {
     }
 
     private fun checkDue(context: Context, force: Boolean): Read {
-        val now = System.currentTimeMillis()
+        val now = Clock.now()
         val data = Store.load(context)
         val positions = positionsOf(data)
         if (!data.remoteOn || (!data.checksOn && !force) || positions.isEmpty()) return Read.NONE
@@ -260,7 +260,7 @@ object RemoteBoards {
             newSeen += listOf(listing.id, duplicate)
             val posted = if (listing.postedAt > 0) Instant.ofEpochMilli(listing.postedAt).atOffset(ZoneOffset.UTC).toLocalDate().toString() else ""
             fresh += Job(listing.id, title, company, listing.where.ifBlank { "Remote" }, posted, listing.url,
-                search = LABEL, foundAt = now, isNew = true, source = listing.source)
+                search = LABEL, foundAt = now, isNew = true, source = listing.source, postedAt = listing.postedAt)
         }
 
         val status = "Checked ${timeText(now)}: ${fresh.size} new" +
@@ -281,7 +281,7 @@ object RemoteBoards {
      */
     private fun readHackerNews(query: Query): List<Listing> {
         val thread = hiringThread(query.context)
-        val from = maxOf(query.since - 60 * 60_000, System.currentTimeMillis() - FIRST_CHECK_DAYS * DAY_MS) / 1000
+        val from = maxOf(query.since - 60 * 60_000, Clock.now() - FIRST_CHECK_DAYS * DAY_MS) / 1000
         return parseHackerNews(get("$HN_SEARCH?tags=comment,story_$thread&hitsPerPage=1000&numericFilters=created_at_i>$from"),
             thread, query.positions)
     }
@@ -289,7 +289,7 @@ object RemoteBoards {
     /** This month's "Who is hiring?" thread. It changes once a month, so it's looked up at most once a day. */
     private fun hiringThread(context: Context): String {
         val prefs = context.getSharedPreferences("hackernews", Context.MODE_PRIVATE)
-        val now = System.currentTimeMillis()
+        val now = Clock.now()
         prefs.getString("thread", null)?.let { if (now - prefs.getLong("lookedUp", 0L) in 0 until DAY_MS) return it }
         val thread = parseHiringThread(get("$HN_SEARCH?tags=story,author_whoishiring&hitsPerPage=3"))
             ?: throw IllegalStateException("no \"Who is hiring?\" thread")

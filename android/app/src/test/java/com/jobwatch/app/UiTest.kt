@@ -162,7 +162,7 @@ class UiTest {
     @Test
     fun aboutShowsTheVersion() {
         compose.onNodeWithContentDescription("About Job Watch").performClick()
-        compose.onNodeWithText("Version 1.12 (build 13)").assertIsDisplayed()
+        compose.onNodeWithText("Version 1.13 (build 14)").assertIsDisplayed()
         compose.onNodeWithText("jobs found so far", substring = true).assertIsDisplayed()
         screenshot("7-about", ShadowDialog.getLatestDialog().window!!.decorView)
     }
@@ -273,6 +273,15 @@ class UiTest {
         compose.waitForIdle()
         assertFalse(Store.load(compose.activity).remoteOn)
         compose.onNode(card and hasText("Off")).assertIsDisplayed()
+    }
+
+    @Test
+    fun deliveryTimesShowEachStageOfTheJobsJourney() {
+        firstCheckDone()
+        compose.onNodeWithText("Delivery times").performClick()
+        compose.onNodeWithText("10 LinkedIn jobs found in the last 24 hours.").assertIsDisplayed()
+        compose.onNodeWithText("Posted to found", substring = true).assertIsDisplayed()
+        screenshot("14-delivery-times", ShadowDialog.getLatestDialog().window!!.decorView)
     }
 
     @Test

@@ -90,7 +90,7 @@ object JobSites {
     }
 
     private fun checkDue(context: Context, force: Boolean): Read {
-        val now = System.currentTimeMillis()
+        val now = Clock.now()
         val data = Store.load(context)
         val due = due(data, now, force)
         if (due.isEmpty()) return Read.NONE
@@ -132,7 +132,7 @@ object JobSites {
                 added++
                 val posted = if (listing.postedAt > 0) Instant.ofEpochMilli(listing.postedAt).atOffset(ZoneOffset.UTC).toLocalDate().toString() else ""
                 fresh += Job(listing.id, title, company, listing.where.ifBlank { f.search.place }, posted, listing.url,
-                    search = f.search.label, foundAt = now, isNew = true, source = listing.source)
+                    search = f.search.label, foundAt = now, isNew = true, source = listing.source, postedAt = listing.postedAt)
             }
             status[d.site] = "Checked ${timeText(now)}$where: $added new of ${found.size} found"
         }

@@ -35,7 +35,13 @@ data class AppData(
  * the others), and how it ended. [finishedAt] stays 0 while it runs, and for good if the phone
  * stopped the app before the check could finish.
  */
-data class Round(val startedAt: Long, val trigger: String, val finishedAt: Long = 0L, val result: String = "")
+data class Round(
+    val startedAt: Long,
+    val trigger: String,
+    val finishedAt: Long = 0L,
+    val result: String = "",
+    val dueAt: Long = 0L, // when the alarm that started it was due; 0 = not started by the alarm
+)
 
 /**
  * All app state in one JSON file. Every change goes through [update], one at a time,
@@ -110,6 +116,11 @@ object Store {
         d.copy(jobs = jobs)
     }
 
+    /** Note that the phone was told about the jobs [ids] at [at]. */
+    fun markNotified(context: Context, ids: Set<String>, at: Long) = update(context) { d ->
+        d.copy(jobs = d.jobs.map { if (it.id in ids && it.notifiedAt == 0L) it.copy(notifiedAt = at) else it })
+    }
+
     /** Add [search] unless it's already in the list or there are [MAX_SEARCHES] already. Returns whether it was added. */
     fun addSearch(context: Context, search: Search): Boolean {
         var added = false
@@ -145,7 +156,7 @@ object Store {
         .put("jobs", JSONArray(data.jobs.map {
             JSONObject().put("id", it.id).put("title", it.title).put("company", it.company).put("location", it.location)
                 .put("posted", it.posted).put("url", it.url).put("search", it.search).put("foundAt", it.foundAt)
-                .put("isNew", it.isNew).put("source", it.source)
+                .put("isNew", it.isNew).put("source", it.source).put("postedAt", it.postedAt).put("notifiedAt", it.notifiedAt)
         }))
         .put("lastRun", data.lastRun)
         .put("limited", data.limited)
@@ -156,6 +167,7 @@ object Store {
         .put("boardChecks", JSONObject(data.boardChecks))
         .put("rounds", JSONArray(data.rounds.map {
             JSONObject().put("startedAt", it.startedAt).put("trigger", it.trigger).put("finishedAt", it.finishedAt).put("result", it.result)
+                .put("dueAt", it.dueAt)
         }))
         .put("lastLinkedInAt", data.lastLinkedInAt)
         .put("linkedInPausedUntil", data.linkedInPausedUntil)
@@ -177,7 +189,7 @@ object Store {
         return AppData(
             searches = List(searches.length()) { i ->
                 val o = searches.getJSONObject(i)
-                Search(o.getString("keywords"), o.optString("location"), o.optLong("lastCheck", System.currentTimeMillis()),
+                Search(o.getString("keywords"), o.optString("location"), o.optLong("lastCheck", Clock.now()),
                     o.optInt("found"), o.optString("status", "Not checked yet"), lastTry = o.optLong("lastTry"),
                     cursor = o.optInt("cursor"), checkStartedAt = o.optLong("checkStartedAt"), checkNew = o.optInt("checkNew"),
                     lastPageIds = o.optJSONArray("lastPageIds").strings())
@@ -187,7 +199,7 @@ object Store {
                 val o = jobs.getJSONObject(i)
                 Job(o.getString("id"), o.optString("title"), o.optString("company"), o.optString("location"),
                     o.optString("posted"), o.optString("url"), o.optString("search"), o.optLong("foundAt"), o.optBoolean("isNew"),
-                    o.optString("source", "LinkedIn"))
+                    o.optString("source", "LinkedIn"), o.optLong("postedAt"), o.optLong("notifiedAt"))
             },
             lastRun = json.optLong("lastRun"),
             limited = json.optBoolean("limited"),
@@ -198,7 +210,7 @@ object Store {
             boardChecks = boardChecks.keys().asSequence().associateWith { boardChecks.optLong(it) },
             rounds = List(rounds.length()) { i ->
                 val o = rounds.getJSONObject(i)
-                Round(o.getLong("startedAt"), o.optString("trigger"), o.optLong("finishedAt"), o.optString("result"))
+                Round(o.getLong("startedAt"), o.optString("trigger"), o.optLong("finishedAt"), o.optString("result"), o.optLong("dueAt"))
             },
             lastLinkedInAt = json.optLong("lastLinkedInAt"),
             linkedInPausedUntil = json.optLong("linkedInPausedUntil"),

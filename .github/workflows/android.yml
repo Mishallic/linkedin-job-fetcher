@@ -1,0 +1,42 @@
+name: Android
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests and release build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      # The runner's Android SDK comes from ANDROID_HOME; local.properties is only for the developer's PC.
+      # The tests run on saved responses and a simulated clock; the live LinkedIn check stays off.
+      # The APK built here is signed with the runner's key: phones update only from the developer's build.
+      - run: ./gradlew --console=plain testReleaseUnitTest assembleRelease
+      - name: Screens drawn by the UI tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screens
+          path: android/app/build/screenshots
+          if-no-files-found: ignore
+      - name: Test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: android/app/build/reports/tests

@@ -45,11 +45,11 @@ object Scheduler {
 
     /** Set the alarm [delayMs] from now. */
     fun scheduleNext(context: Context, delayMs: Long = SPACING_MINUTES * 60_000) =
-        scheduleAt(context, System.currentTimeMillis() + delayMs)
+        scheduleAt(context, Clock.now() + delayMs)
 
     /** Set the alarm for the next check that's due ([Checker.nextTickAt]). */
     fun reschedule(context: Context) =
-        scheduleAt(context, Checker.nextTickAt(context, Store.load(context), System.currentTimeMillis()))
+        scheduleAt(context, Checker.nextTickAt(context, Store.load(context), Clock.now()))
 
     fun stop(context: Context) {
         context.getSystemService(AlarmManager::class.java).cancel(alarmIntent(context))
@@ -66,7 +66,7 @@ object Scheduler {
      * the app covers the rest, and leaves a healthy chain alone ([MainActivity.onResume]).
      */
     fun isScheduled(context: Context): Boolean =
-        nextCheckAt(context) > System.currentTimeMillis() && PendingIntent.getBroadcast(context, 0,
+        nextCheckAt(context) > Clock.now() && PendingIntent.getBroadcast(context, 0,
             Intent(context, CheckReceiver::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE) != null
 
     fun canExact(context: Context): Boolean =
@@ -83,11 +83,12 @@ class CheckReceiver : BroadcastReceiver() {
             Scheduler.stop(app)
             return
         }
+        val due = Scheduler.nextCheckAt(app) // when this alarm was set for, to see how late the phone ran it
         Scheduler.scheduleNext(app) // keep the chain going whatever happens below; the check then sets the exact time
         val pending = goAsync()
         thread {
             try {
-                Checker.tick(app, Checker.TRIGGER_ALARM)
+                Checker.tick(app, Checker.TRIGGER_ALARM, due = due)
             } finally {
                 pending.finish()
             }

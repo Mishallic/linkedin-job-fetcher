@@ -92,13 +92,22 @@ object Alerts {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    /** Tell the user about one round of new jobs: notification, then email/WhatsApp if turned on. */
-    fun deliver(context: Context, jobs: List<Job>) {
-        notify(context, jobs)
+    /**
+     * Tell the user about new jobs: notification, then email/WhatsApp if turned on. Returns whether
+     * the notification went out (not when notifications aren't allowed).
+     */
+    fun deliver(context: Context, jobs: List<Job>): Boolean {
+        val notified = notify(context, jobs)
+        sendExternal(context, jobs)
+        return notified
+    }
+
+    /** Email and WhatsApp the jobs, where turned on, and note how it went. */
+    fun sendExternal(context: Context, jobs: List<Job>) {
         val config = AlertPrefs.load(context)
         if (!config.emailEnabled && !config.whatsappEnabled) return
         val results = send(config, jobs)
-        val time = timeText(System.currentTimeMillis())
+        val time = timeText(Clock.now())
         val sent = results.filterValues { it == null }.keys
         val parts = mutableListOf<String>()
         if (sent.isNotEmpty()) parts += "sent ${jobs.size} job(s) by ${sent.joinToString(" + ")} at $time"
@@ -106,11 +115,12 @@ object Alerts {
         AlertPrefs.setLastSend(context, parts.joinToString(". ").replaceFirstChar { it.uppercase() })
     }
 
+    /** The phone's notification for [jobs]. Returns false when notifications aren't allowed. */
     @SuppressLint("MissingPermission") // checked just below
-    fun notify(context: Context, jobs: List<Job>) {
+    fun notify(context: Context, jobs: List<Job>): Boolean {
         if (Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) return
+        ) return false
         // One job: tapping opens it. Several: tapping opens the app's list.
         val open = if (jobs.size == 1) Intent(Intent.ACTION_VIEW, Uri.parse(jobs[0].url))
         else Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -127,7 +137,8 @@ object Alerts {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
-        NotificationManagerCompat.from(context).notify((System.currentTimeMillis() / 1000).toInt(), notification)
+        NotificationManagerCompat.from(context).notify((Clock.now() / 1000).toInt(), notification)
+        return true
     }
 
     /** Send to every enabled channel. Returns channel -> error message, or null if it was sent. */
