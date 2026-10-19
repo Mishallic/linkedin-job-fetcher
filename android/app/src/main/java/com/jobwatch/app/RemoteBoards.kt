@@ -34,7 +34,7 @@ object RemoteBoards {
     const val MOBILE_DATA_MINUTES = 60L
     const val UNLIMITED_MINUTES = 10L // boards with no limit of their own: every 10 minutes, whatever LinkedIn's pace
     private const val LEGACY_WORK = "remote-boards" // 1.8 and earlier read the boards every 6 hours with WorkManager
-    const val USER_AGENT = "Mozilla/5.0 (Linux; Android) JobWatch/1.13"
+    const val USER_AGENT = "Mozilla/5.0 (Linux; Android) JobWatch/1.14"
     private const val FIRST_CHECK_DAYS = 7L // the first check shows the past week's jobs
     private const val MAX_AGE_DAYS = 14L
     private const val DAY_MS = 86_400_000L
