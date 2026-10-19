@@ -10,7 +10,7 @@ There are three versions of it:
 
 | Version | Where it runs | How it tells you |
 | --- | --- | --- |
-| **Job Watch** ([`android/`](android)) | Android phone: each LinkedIn search every 10 minutes, plus remote job boards and job sites | Phone notification, plus optional email and WhatsApp |
+| **Job Watch** ([`android/`](android)) | Android phone: each LinkedIn search every 5 minutes, plus remote job boards and job sites | Phone notification, plus optional email and WhatsApp |
 | **Desktop app** (`jobs_ui.py`) | Windows PC, while the window is open | Email and WhatsApp; a phone page over Wi-Fi |
 | **iPhone script** ([`iphone/Jobs.js`](iphone/Jobs.js)) | iPhone, in the free Scriptable app, when iOS allows | iPhone notification, plus optional WhatsApp |
 
@@ -23,16 +23,16 @@ are never repeated.
 **Install:** download `JobWatch-<version>.apk` from this repository's
 [Releases](../../releases) on the phone, open it, and allow installing from that source.
 On first launch, allow notifications and tap **Allow** on the "Finish setting up" card so
-Android doesn't pause the checks. The **Check every 10 minutes** switch turns background
+Android doesn't pause the checks. The **Check every 5 minutes** switch turns background
 checks off and on.
 
-**How often LinkedIn is asked:** one search every 2 minutes at most, whatever starts the
-check: the alarm, the refresh button or a new search. Each search's turn comes 10 minutes
-after its last one, so with 5 searches, the most Job Watch takes, LinkedIn gets 5 requests
-every 10 minutes rather than a burst of them; with fewer, the app sleeps until the next turn.
+**How often LinkedIn is asked:** one search a minute at most, whatever starts the check:
+the alarm, the refresh button or a new search. Each search's turn comes 5 minutes after
+its last one, so with 5 searches, the most Job Watch takes, LinkedIn gets 5 requests every
+5 minutes rather than a burst of them; with fewer, the app sleeps until the next turn.
 A search with more new jobs than one page holds reads one page per turn. If LinkedIn asks to
 slow down, background checks leave it alone for 10 minutes; the refresh button can try again
-after 2. The phone is told about new jobs by the check that finds them; email and WhatsApp
+after a minute. The phone is told about new jobs by the check that finds them; email and WhatsApp
 go at most every 10 minutes, all together, or at once for a check you ask for. Opening the app
 doesn't check again; the refresh button checks the next search at once, or says when it goes.
 
@@ -115,7 +115,7 @@ iOS decides how often those run.
 ## Good to know
 
 - LinkedIn limits how often one internet connection can use its job search (HTTP 429).
-  Job Watch asks for one search every 2 minutes at most, and after a refusal leaves LinkedIn
+  Job Watch asks for one search a minute at most, and after a refusal leaves LinkedIn
   alone for 10 minutes. The desktop app and the iPhone script stop the current round after one
   request and try again at the next check.
 - Use "City, Country" for locations. "Jordan" on its own is read by LinkedIn as Danville, PA,
